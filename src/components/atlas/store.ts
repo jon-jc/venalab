@@ -59,6 +59,8 @@ const PANEL_PX = 366;
 const WIDE_PX = 1024;
 /** Length of the needle, holder and tube from the point to the end of the tube, cm. */
 const INSTRUMENT_CM = 14.6;
+/** Height of the safety lancet standing on the skin, cm. */
+const LANCET_CM = 5.6;
 
 /**
  * A camera pose that shows a site on the skin, and the instrument held over
@@ -66,7 +68,7 @@ const INSTRUMENT_CM = 14.6;
  * collector's side, looking down on the site and across the needle, so the
  * whole instrument is seen side-on and its angle to the skin can be judged.
  */
-export function siteView(p: Vec3, n: Vec3, instrument: { angle: number; yaw: number } | null, around = 2.6): { target: Vec3; position: Vec3 } {
+export function siteView(p: Vec3, n: Vec3, instrument: { angle: number; yaw: number; length?: number } | null, around = 2.6): { target: Vec3; position: Vec3 } {
   const unit = (v: Vec3): Vec3 => {
     const l = Math.hypot(v[0], v[1], v[2]) || 1;
     return [v[0] / l, v[1] / l, v[2] / l];
@@ -89,7 +91,8 @@ export function siteView(p: Vec3, n: Vec3, instrument: { angle: number; yaw: num
   const points: Vec3[] = [[-margin, -margin, 0], [margin, -margin, 0], [-margin, margin, 0], [margin, margin, 0]];
   if (instrument) {
     const d = needleDir(n, instrument.angle, instrument.yaw);
-    const end: Vec3 = [-d[0] * INSTRUMENT_CM, -d[1] * INSTRUMENT_CM, -d[2] * INSTRUMENT_CM];
+    const reach = instrument.length ?? INSTRUMENT_CM;
+    const end: Vec3 = [-d[0] * reach, -d[1] * reach, -d[2] * reach];
     const [u, v, w] = [dot(end, right), dot(end, up), dot(end, toward)];
     points.push([u - 1.4, v - 1.4, w], [u + 1.4, v - 1.4, w], [u - 1.4, v + 1.8, w], [u + 1.4, v + 1.8, w]);
   }
@@ -106,7 +109,7 @@ export function siteView(p: Vec3, n: Vec3, instrument: { angle: number; yaw: num
   if (wide && useAtlas.getState().demo) clear.y0 += 130;
   // The camera's vertical field of view is 30°.
   const focal = H / (2 * Math.tan(Math.PI / 12));
-  const nearest = instrument ? 20 : 11;
+  const nearest = !instrument ? 11 : instrument.length ? 13 : 20;
   let distance = 30, du = 0, dv = 0;
   // Things nearer the camera look bigger, so the fit is found by repeated correction.
   for (let i = 0; i < 16; i++) {
@@ -270,6 +273,12 @@ export const useAtlas = create<AtlasState>((set, get) => {
     if (sim.entry && sim.normal) set({ view: { id: "site", n: view.n + 1, ...siteView(sim.entry, sim.normal, { angle: sim.angle, yaw: sim.yaw }) } });
   };
 
+  /** Draw back far enough to show the lancet standing on the fingertip. */
+  const showLancet = () => {
+    const { cap, view } = get();
+    if (cap.site && cap.normal) set({ view: { id: "site", n: view.n + 1, ...siteView(cap.site, cap.normal, { angle: 90, yaw: 0, length: LANCET_CM }) } });
+  };
+
   return {
     mode: "sim",
     procedure: "venous",
@@ -330,7 +339,10 @@ export const useAtlas = create<AtlasState>((set, get) => {
     },
     cleanse: () => {
       set({ scrub: 1 });
-      if (get().procedure === "capillary") set({ cap: { ...get().cap, cleansedAt: Date.now(), wiping: false, step: 4 } });
+      if (get().procedure === "capillary") {
+        set({ cap: { ...get().cap, cleansedAt: Date.now(), wiping: false, step: 4 } });
+        showLancet();
+      }
       else {
         const picksUp = get().sim.stage === "cleanse";
         set({ sim: { ...get().sim, cleansedAt: Date.now(), stage: picksUp ? "needle" : get().sim.stage } });
@@ -410,7 +422,10 @@ export const useAtlas = create<AtlasState>((set, get) => {
       if (cap.phase !== "aim") return;
       if (step <= 2) set({ scrub: 0, cap: { ...cap, step, site: null, normal: null, wiping: false, cleansedAt: null } });
       else if (cap.site && step === 3) set({ scrub: 0, cap: { ...cap, step, wiping: true, cleansedAt: null } });
-      else if (cap.site && step === 4) set({ cap: { ...cap, step, wiping: false } });
+      else if (cap.site && step === 4) {
+        set({ cap: { ...cap, step, wiping: false } });
+        showLancet();
+      }
     },
   };
 });
