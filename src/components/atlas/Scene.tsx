@@ -786,6 +786,7 @@ function Arm() {
           <meshPhysicalMaterial
             key={`${layers.skin < 1}`}
             vertexColors
+            side={THREE.DoubleSide}
             color={new THREE.Color(TONES[tone].color).lerp(new THREE.Color("#fbe7e0"), 0.72)}
             roughness={0.22}
             clearcoat={1}
