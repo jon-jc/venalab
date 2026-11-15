@@ -307,13 +307,23 @@ function surfaceAnatomy(): Feature[][] {
   return bins;
 }
 
-/** The modelled limb at an average build: the stored field with the surface anatomy on it. */
-function limb(x: number, y: number, z: number): number {
-  let d = sample(x, y, z);
+/**
+ * How strongly the surface anatomy shows through soft tissue of a given build.
+ * Fat buries tendons and bony points, so they fade on a heavier arm and stand
+ * out on a lean one.
+ */
+function definition(build: number): number {
+  return Math.min(Math.max(1 - 2.4 * (build - 1), 0.25), 1.3);
+}
+
+/** The modelled limb: the stored field with the surface anatomy on it, as marked as the build allows. */
+function limb(x: number, y: number, z: number, build = 1): number {
+  const bare = sample(x, y, z);
   // Nothing raised on the skin reaches further than this from it.
-  if (!relief || d > 2.4 || d < -3.2) return d;
+  if (!relief || bare > 2.4 || bare < -3.2) return bare;
   const here = relief[Math.floor(x - RELIEF_X0)];
-  if (!here) return d;
+  if (!here) return bare;
+  let d = bare;
   for (const f of here) {
     if ("ball" in f) {
       const { c, r, k } = f.ball;
@@ -332,7 +342,7 @@ function limb(x: number, y: number, z: number): number {
       if (inside > d - k) d = -smin(-d, -inside, k);
     }
   }
-  return d;
+  return build === 1 ? d : bare + (d - bare) * definition(build);
 }
 
 /** Signed distance (cm) to the skin surface: negative inside the limb. */
@@ -344,7 +354,7 @@ export function skinSDF(x: number, y: number, z: number): number {
   else {
     // A heavier or leaner arm is the same section, scaled about its centre.
     section(x);
-    d = s * limb(x, secY + (y - secY) / s, secZ + (z - secZ) / s);
+    d = s * limb(x, secY + (y - secY) / s, secZ + (z - secZ) / s, s);
   }
   // The limb is cut through the upper arm; the rim of the cut is rounded.
   const cut = X_PROXIMAL - x;
