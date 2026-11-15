@@ -30,7 +30,7 @@ export function ModeTabs() {
             stopDemo();
             set({ mode: id, selected: null, nir: false });
           }}
-          className={`rounded-[10px] px-4 py-1.5 text-sm font-medium transition ${mode === id ? "bg-accent text-ink-950" : "text-slate-300 hover:bg-white/5"}`}
+          className={`rounded-[10px] px-3 py-1.5 text-[13px] font-medium transition lg:px-4 lg:text-sm ${mode === id ? "bg-accent text-ink-950" : "text-slate-300 hover:bg-white/5"}`}
         >
           {label}
         </button>
@@ -43,7 +43,7 @@ export function ControlPanel() {
   const s = useAtlas();
   const explore = s.mode === "explore";
   return (
-    <div className="panel thin-scroll max-h-full w-[280px] overflow-y-auto">
+    <div className="panel thin-scroll max-h-full w-[250px] overflow-y-auto lg:w-[280px]">
       <Section title="Camera">
         <div className="flex flex-wrap gap-1.5">
           {Object.entries(VIEWS).map(([id, v]) => (
@@ -166,7 +166,7 @@ export function InfoPanel() {
   if (b && !demo) {
     const d = b.def;
     return (
-      <div className="panel thin-scroll max-h-full w-[340px] overflow-y-auto p-4">
+      <div className="panel thin-scroll w-full p-4 lg:max-h-full lg:w-[340px] lg:overflow-y-auto">
         <div className="flex items-start justify-between gap-2">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: d.color ?? LAYER_COLOR[d.layer] }}>
@@ -212,7 +212,7 @@ export function InfoPanel() {
     goto(viewFor(x.anchor));
   };
   return (
-    <div className="panel thin-scroll max-h-full w-[340px] overflow-y-auto p-4">
+    <div className="panel thin-scroll w-full p-4 lg:max-h-full lg:w-[340px] lg:overflow-y-auto">
       <button className="btn btn-ghost mb-4 w-full" onClick={() => (demo ? stopDemo() : playTour())}>
         {demo ? "■  Stop tour" : "▶  Take the guided anatomy tour"}
       </button>

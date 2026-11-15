@@ -390,7 +390,7 @@ export function PracticePanel() {
   const { set, setDifficulty, newPatient, goto } = useAtlas.getState();
 
   return (
-    <div className="panel thin-scroll max-h-full w-[350px] overflow-y-auto">
+    <div className="panel thin-scroll w-full lg:max-h-full lg:w-[350px] lg:overflow-y-auto">
       <div className="border-b border-white/10 px-4 py-3">
         <div className={`flex gap-1 rounded-lg bg-white/5 p-1 ${demo ? "pointer-events-none opacity-40" : ""}`}>
           {(

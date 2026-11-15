@@ -802,14 +802,22 @@ function Rig() {
   const view = useAtlas((s) => s.view);
   const controls = useThree((s) => s.controls) as OrbitControlsImpl | null;
   const camera = useThree((s) => s.camera);
+  const size = useThree((s) => s.size);
+  // How much further back the named views are taken, so that what they show
+  // fits the part of the canvas the practice panel leaves clear.
+  const stand = useRef(1);
+  const wide = typeof window !== "undefined" && window.innerWidth >= 1024;
+  stand.current = Math.min(Math.max(1.36 / ((size.width - (wide ? 366 : 0)) / Math.max(size.height, 1)), wide ? 1 : 0.75), 2.4);
   const goal = useRef<{ p: THREE.Vector3; t: THREE.Vector3 } | null>(null);
 
   useEffect(() => {
-    const v = view.target && view.position ? { target: view.target, position: view.position } : VIEWS[view.id];
-    goal.current = {
-      p: new THREE.Vector3(v.position[0] - OFFSET, v.position[1], v.position[2]),
-      t: new THREE.Vector3(v.target[0] - OFFSET, v.target[1], v.target[2]),
-    };
+    const posed = !!(view.target && view.position);
+    const v = posed ? { target: view.target!, position: view.position! } : VIEWS[view.id];
+    const t = new THREE.Vector3(v.target[0] - OFFSET, v.target[1], v.target[2]);
+    const p = new THREE.Vector3(v.position[0] - OFFSET, v.position[1], v.position[2]);
+    // A pose worked out for this window is used as it is.
+    if (!posed) p.sub(t).multiplyScalar(stand.current).add(t);
+    goal.current = { p, t };
   }, [view]);
 
   useEffect(() => {
@@ -891,7 +899,7 @@ export default function Scene() {
       <Ground />
       <Rig />
       <LabelProjector />
-      <OrbitControls makeDefault enableDamping dampingFactor={0.12} minDistance={8} maxDistance={220} rotateSpeed={0.8} />
+      <OrbitControls makeDefault enableDamping dampingFactor={0.12} minDistance={8} maxDistance={360} rotateSpeed={0.8} />
     </Canvas>
   );
 }
