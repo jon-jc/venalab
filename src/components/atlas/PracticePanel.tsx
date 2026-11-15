@@ -115,12 +115,6 @@ function Venous() {
 
   return (
     <>
-      <div className="border-b border-white/10 px-4 py-3">
-        <button className="btn btn-ghost w-full" onClick={() => (demo ? stopDemo() : playDemo())}>
-          {demo ? "■  Stop demonstration" : "▶  Watch a guided venipuncture"}
-        </button>
-      </div>
-
       <div className={demo ? "pointer-events-none opacity-50" : ""}>
         <Step n={1} title="Tourniquet" state={state("tourniquet")} summary={tourniquet ? <>On · {clock}</> : "Not applied"} onOpen={free ? () => stageTo("tourniquet") : undefined}>
           <p className="text-sm text-slate-200">Apply it 7.5–10 cm above where you expect to draw. The veins fill within seconds.</p>
@@ -391,6 +385,12 @@ export function PracticePanel() {
 
   return (
     <div className="panel thin-scroll w-full lg:max-h-full lg:w-[350px] lg:overflow-y-auto">
+      <div className="border-b border-white/10 px-4 py-3">
+        <button className="btn w-full" onClick={() => (demo ? stopDemo() : playDemo())}>
+          {demo ? "■  Stop the demonstration" : "▶  Watch a venipuncture in 30 seconds"}
+        </button>
+        <p className="mt-1.5 text-center text-[11px] text-slate-500">Or practise it yourself, step by step, below.</p>
+      </div>
       <div className="border-b border-white/10 px-4 py-3">
         <div className={`flex gap-1 rounded-lg bg-white/5 p-1 ${demo ? "pointer-events-none opacity-40" : ""}`}>
           {(

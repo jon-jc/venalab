@@ -248,8 +248,8 @@ export function DemoCaption() {
   const demo = useAtlas((s) => s.demo);
   if (!demo) return null;
   return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-10 z-20 flex justify-center px-4">
-      <div className="panel max-w-2xl px-6 py-4 text-center">
+    <div className="pointer-events-none absolute inset-x-0 bottom-3 z-20 flex justify-center px-3 lg:bottom-10 lg:px-4">
+      <div className="panel pointer-events-auto w-full max-w-2xl px-4 py-3 text-center lg:w-auto lg:px-6 lg:py-4">
         <div className="mb-2 flex justify-center gap-1.5">
           {Array.from({ length: demo.total }, (_, i) => (
             <span key={i} className={`h-1 w-7 rounded-full ${i <= demo.step ? "bg-accent" : "bg-white/15"}`} />
@@ -257,6 +257,9 @@ export function DemoCaption() {
         </div>
         <p className="text-[11px] font-semibold uppercase tracking-widest text-accent">Step {demo.step + 1} of {demo.total}</p>
         <p className="mt-1 text-base leading-snug text-white">{demo.caption}</p>
+        <button className="mt-2 text-xs text-slate-400 underline-offset-2 hover:text-white hover:underline" onClick={stopDemo}>
+          Stop
+        </button>
       </div>
     </div>
   );

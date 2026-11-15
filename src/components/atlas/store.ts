@@ -102,6 +102,8 @@ export function siteView(p: Vec3, n: Vec3, instrument: { angle: number; yaw: num
   const H = canvas?.clientHeight || 780;
   const wide = typeof window !== "undefined" && window.innerWidth >= WIDE_PX;
   const clear = wide ? { x0: -W / 2 + 24, x1: W / 2 - PANEL_PX, y0: -H / 2 + 36, y1: H / 2 - 56 } : { x0: -W / 2 + 10, x1: W / 2 - 10, y0: -H / 2 + 12, y1: H / 2 - 50 };
+  // On a wide screen the narration of a demonstration lies across the foot of the canvas.
+  if (wide && useAtlas.getState().demo) clear.y0 += 130;
   // The camera's vertical field of view is 30°.
   const focal = H / (2 * Math.tan(Math.PI / 12));
   const nearest = instrument ? 20 : 11;

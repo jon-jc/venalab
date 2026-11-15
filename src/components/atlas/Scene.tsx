@@ -310,7 +310,8 @@ function Needle() {
     const far = Math.abs(goal - shown.current);
     // Slow and deliberate through the skin, quicker through the air.
     const rate = sim.phase === "advancing" ? 11 : sim.phase === "withdraw" ? 60 : Math.max(22, far * 5);
-    const step = rate * dt;
+    // Travel keeps to the clock even when frames are slow, so a demonstration takes the same time on any device.
+    const step = rate * Math.min(dtRaw, 0.25);
     shown.current = far <= step ? goal : shown.current + Math.sign(goal - shown.current) * step;
     live.needle = shown.current;
     if (sim.phase === "advancing" && shown.current === goal) s.finish();
@@ -349,7 +350,7 @@ function Needle() {
     seat.current += ((flowing || fill.current > 0.01 ? 1 : 0) - seat.current) * (1 - Math.exp(-dt * 5));
     if (tube.current) tube.current.position.y = (1 - seat.current) * 3.4;
     const filling = flowing && seat.current > 0.92;
-    if (filling) fill.current = Math.min(1, fill.current + (arterial ? 0.25 + 0.9 * live.pulse : 0.17) * dt);
+    if (filling) fill.current = Math.min(1, fill.current + (arterial ? 0.25 + 0.9 * live.pulse : 0.17) * Math.min(dtRaw, 0.25));
     else if (state?.outcome === "through" && shown.current > 0) fill.current = Math.max(fill.current, 0.05);
     if (blood.current) {
       const h = Math.max(fill.current * 6.4, 0.001);
