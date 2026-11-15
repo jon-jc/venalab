@@ -24,7 +24,7 @@ A **guided demonstration** plays a textbook venipuncture, narrated step by step.
 **Fingerstick (capillary puncture)** follows the same pattern: warm the hand, choose the site, cleanse it with the wipe, set and fire the lancet, collect.
 - The finger under the pointer is named as you move, and at the easier levels the recommended places on the pads of the middle and ring fingers are marked
 - Choose the lancet depth and the direction of the blade, wipe away the first drop, and collect with the right pressure into the right tube first
-- The debrief explains each choice: which fingers to use, why the side and the tip are avoided, why 2.0 mm is the limit, and why capillary tubes are filled in the reverse of the venous order
+- The debrief explains each choice: which fingers to use, why the side and the tip are avoided, why the puncture must not go beyond 2.4 mm, and why capillary tubes are filled in the reverse of the venous order
 
 ### Explore anatomy — `/atlas?mode=explore`
 - Eight tissue layers from skin to bone, each with its own opacity, plus dissection presets that peel away smoothly

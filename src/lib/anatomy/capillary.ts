@@ -4,7 +4,8 @@ import { DIGITS, type Vec3 } from "./skin";
 /**
  * Capillary (fingerstick) puncture. The right place is the palmar pulp of the
  * middle or ring finger, a little to one side of the midline, punctured across
- * the fingerprint ridges and no deeper than 2 mm.
+ * the fingerprint ridges. An adult finger takes a 2.2 mm lancet; the puncture
+ * must not go beyond 2.4 mm (WHO guidelines on drawing blood, 2010).
  */
 
 export interface CapillaryChoices {
@@ -116,9 +117,10 @@ export function evaluateCapillary(site: Vec3, c: CapillaryChoices, timing: { cle
   else add("good", "Good site: on the palmar pad, slightly to one side of the midline.");
 
   // Lancet
-  if (c.lancet > 2.0) add("bad", `A ${c.lancet.toFixed(1)} mm puncture is too deep for a finger: the bone may be less than 2.4 mm beneath the skin, and bone injury can lead to osteomyelitis. Never exceed 2.0 mm.`, 30);
+  if (c.lancet > 2.4) add("bad", `A ${c.lancet.toFixed(1)} mm puncture is too deep for a finger. It should not go beyond 2.4 mm — the bone lies close beneath the pad, and injuring it can lead to osteomyelitis. A 2.2 mm lancet is the longest normally used.`, 30);
   else if (c.lancet < 1.5) add("warn", `A ${c.lancet.toFixed(1)} mm puncture is shallow for an adult finger; flow is likely to be poor and tempt you to squeeze.`, 10);
-  else add("good", `Lancet depth ${c.lancet.toFixed(1)} mm is appropriate.`);
+  else if (c.lancet < 2.2) add("warn", `A ${c.lancet.toFixed(1)} mm lancet is the size for a child under 8. It is safe in an adult, but the flow is often slow; 2.2 mm is the usual adult depth.`, 4);
+  else add("good", `Lancet depth ${c.lancet.toFixed(1)} mm is the usual depth for an adult finger.`);
   if (c.across) add("good", "Blade across the fingerprint ridges, so the blood beads into a round drop.");
   else add("warn", "With the blade along the fingerprint ridges, blood runs down the grooves instead of forming a drop. Turn the lancet to cut across them.", 10);
 

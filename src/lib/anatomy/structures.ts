@@ -583,7 +583,7 @@ const BONES: StructureDef[] = [
       }),
     ),
     summary: "Bones of the fingers and thumb.",
-    clinical: "For capillary sampling, puncture the palmar pulp of the 3rd or 4th finger slightly off-centre, across the fingerprint ridges, and no deeper than 2.0 mm.",
+    clinical: "For capillary sampling, puncture the palmar pulp of the 3rd or 4th finger slightly off-centre, across the fingerprint ridges, with a 2.2 mm lancet in an adult (1.5 mm in a child under 8) and never deeper than 2.4 mm.",
   },
 ];
 
