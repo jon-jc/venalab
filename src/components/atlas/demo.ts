@@ -48,6 +48,7 @@ export async function playDemo() {
     await step(1, "Apply the tourniquet 7.5–10 cm above the site. The veins fill and rise within seconds — it must not stay on longer than 1 minute.", 5200, () => s().set({ tourniquet: true }));
     await step(2, "Palpate with the tip of your index finger. The vein feels soft and bouncy, and springs back when you press.", 4400, () => {
       look(3, -2, 24);
+      s().stageTo("palpate");
       s().set({ palp: { kind: "vein", text: "Soft, bouncy and resilient.", p: plan.entry, n: plan.normal } });
     });
     await step(3, "Know what lies beneath: the vein crosses the bicipital aponeurosis, which shields the brachial artery and median nerve.", 5400, () => {

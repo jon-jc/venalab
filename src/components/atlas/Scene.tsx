@@ -40,7 +40,7 @@ function Physiology() {
       const e = s.sim.entry;
       live.press.value.set(e[0], e[1], e[2], 0.55);
       want = 0.2 * Math.min(Math.max((live.needle + 3) / 5, 0), 1);
-    } else if (s.mode === "sim" && s.sim.phase === "aim" && s.palp?.p) {
+    } else if (s.mode === "sim" && s.procedure === "venous" && (s.sim.stage === "palpate" || s.demo) && s.palp?.p) {
       const p = s.palp.p;
       live.press.value.set(p[0], p[1], p[2], 0.95);
       want = s.palp.kind === "vein" ? 0.11 + 0.05 * Math.sin(clock.elapsedTime * 5) : s.palp.kind === "artery" ? 0.07 + 0.08 * live.pulse : 0.1;
@@ -228,7 +228,7 @@ function Tourniquet() {
 /** A fingertip on the skin: bounces over a vein, throbs with the pulse over an artery. */
 function PalpationRing() {
   const palp = useAtlas((s) => s.palp);
-  const active = useAtlas((s) => s.mode === "sim" && s.procedure === "venous" && s.sim.phase === "aim" && s.sim.depth <= 0);
+  const active = useAtlas((s) => s.mode === "sim" && s.procedure === "venous" && (s.sim.stage === "palpate" || !!s.demo));
   const ref = useRef<THREE.Group>(null);
   useFrame(({ clock }) => {
     if (!ref.current || !palp?.p || !palp.n) return;
@@ -607,6 +607,8 @@ function Arm() {
   const clipX = useAtlas((s) => s.clip);
   const mode = useAtlas((s) => s.mode);
   const procedure = useAtlas((s) => s.procedure);
+  // The needle is picked up only once the site is ready.
+  const needleOut = useAtlas((s) => s.sim.stage === "needle" || s.sim.stage === "done" || s.sim.phase !== "aim");
   const flow = useAtlas((s) => s.flow);
   const reveal = useAtlas((s) => s.sim.reveal);
   const userLayers = useAtlas((s) => s.layers);
@@ -669,8 +671,11 @@ function Arm() {
 
   const lastPalp = useRef(0);
   const onSkinMove = (e: ThreeEvent<PointerEvent>) => {
-    if (mode !== "sim" || useAtlas.getState().demo) return;
+    const s = useAtlas.getState();
+    if (mode !== "sim" || s.demo) return;
     e.stopPropagation();
+    // The fingertip is only on the arm while looking for a vein.
+    if (s.procedure !== "venous" || s.sim.stage !== "palpate") return;
     const now = performance.now();
     if (now - lastPalp.current < 60) return;
     lastPalp.current = now;
@@ -680,8 +685,8 @@ function Arm() {
   const onSkinClick = (e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
     const s = useAtlas.getState();
-    // A new site can be chosen while the needle is in the air, not once it is in the arm.
-    const busy = s.procedure === "venous" ? s.sim.phase !== "aim" || s.sim.depth > 0 : s.cap.phase !== "aim";
+    // The site is marked while palpating; to change it, go back to that stage.
+    const busy = s.procedure === "venous" ? s.sim.stage !== "palpate" : s.cap.phase !== "aim";
     if (mode !== "sim" || e.delta > 4 || s.demo || busy) return;
     const p: Vec3 = [e.point.x + OFFSET, e.point.y, e.point.z];
     s.mark(p, skinNormal(p[0], p[1], p[2]));
@@ -774,7 +779,7 @@ function Arm() {
       {showFlow && layers.veins > 0 && <Flow built={built} layer="veins" />}
       {showFlow && layers.arteries > 0 && <Flow built={built} layer="arteries" />}
       {tourniquet && <Tourniquet key={anatomy.body.girth} />}
-      {mode === "sim" && procedure === "venous" && (
+      {mode === "sim" && procedure === "venous" && needleOut && (
         <Suspense fallback={null}>
           <Needle />
         </Suspense>
