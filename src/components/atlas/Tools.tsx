@@ -86,3 +86,78 @@ export function Fingertip() {
     </group>
   );
 }
+
+const FRONT = new THREE.Vector3(0, 0, 1);
+
+/**
+ * Cleansing: an alcohol wipe that follows the pointer over the skin, a ring
+ * marking the site to be cleaned, and the wet sheen the alcohol leaves, which
+ * spreads as the site is scrubbed and dries away afterwards.
+ */
+export function Cleansing() {
+  const capillary = useAtlas((s) => s.procedure === "capillary");
+  const wiping = useAtlas((s) => !s.demo && (s.procedure === "venous" ? s.sim.stage === "cleanse" : s.cap.wiping));
+  const site = useAtlas((s) => (s.procedure === "capillary" ? s.cap.site : s.sim.entry));
+  const normal = useAtlas((s) => (s.procedure === "capillary" ? s.cap.normal : s.sim.normal));
+  const cleansedAt = useAtlas((s) => (s.procedure === "capillary" ? s.cap.cleansedAt : s.sim.cleansedAt));
+  const kit = useKit();
+  const pad = useRef<THREE.Group>(null);
+  const sheen = useRef<THREE.Mesh>(null);
+  const wet = useRef<THREE.MeshPhysicalMaterial>(null);
+  const at = useRef(new THREE.Vector3());
+  const q = useRef(new THREE.Quaternion());
+  const settled = useRef(false);
+
+  useFrame(({ camera, size }, dt) => {
+    const scrub = useAtlas.getState().scrub;
+    if (sheen.current && wet.current) {
+      // Alcohol evaporates from the skin in a few seconds.
+      const amount = wiping ? scrub : cleansedAt ? Math.max(0, 1 - (Date.now() - cleansedAt) / 5000) : 0;
+      sheen.current.visible = amount > 0.01;
+      wet.current.opacity = 0.5 * amount;
+    }
+    if (!pad.current || !wiping || !site || !normal) {
+      settled.current = false;
+      return;
+    }
+    // In the hand over the skin; otherwise waiting just above the site.
+    const onSkin = performance.now() - live.wipe.at < 1500;
+    const n = onSkin ? live.wipe.n : new THREE.Vector3(normal[0], normal[1], normal[2]);
+    const target = onSkin ? live.wipe.p : new THREE.Vector3(site[0], site[1], site[2]).addScaledVector(n, 1.6);
+    if (settled.current) at.current.lerp(target, 1 - Math.exp(-dt * 26));
+    else at.current.copy(target);
+    towardViewer(camera, at.current, n, q.current);
+    if (settled.current) pad.current.quaternion.slerp(q.current, 1 - Math.exp(-dt * 12));
+    else pad.current.quaternion.copy(q.current);
+    settled.current = true;
+    pad.current.position.copy(at.current);
+    showHud(camera, size, at.current, scrub > 0 ? `Scrubbing… ${Math.round(scrub * 100)}%` : "Rub the wipe over the site", "-330%");
+  });
+
+  if (!site || !normal) return null;
+  const facing = new THREE.Quaternion().setFromUnitVectors(FRONT, new THREE.Vector3(normal[0], normal[1], normal[2]));
+  const r = capillary ? 0.75 : 1.8;
+  return (
+    <>
+      <group position={site} quaternion={facing}>
+        {wiping && (
+          <mesh renderOrder={8}>
+            <ringGeometry args={[r * 0.92, r, 56]} />
+            <meshBasicMaterial color="#35e0c2" transparent opacity={0.8} depthTest={false} side={THREE.DoubleSide} />
+          </mesh>
+        )}
+        <mesh ref={sheen} visible={false} scale={[r, r, r * 0.16]} renderOrder={7}>
+          <sphereGeometry args={[1, 32, 16]} />
+          <meshPhysicalMaterial ref={wet} color="#e4f4ff" transparent opacity={0} roughness={0.02} clearcoat={1} depthWrite={false} />
+        </mesh>
+      </group>
+      {wiping && (
+        <group ref={pad} scale={capillary ? 0.55 : 1}>
+          <mesh geometry={kit.Wipe} rotation={[Math.PI / 2, 0, 0]} castShadow>
+            <meshPhysicalMaterial color="#f2f7fc" roughness={0.9} sheen={1} sheenColor="#ffffff" sheenRoughness={0.6} />
+          </mesh>
+        </group>
+      )}
+    </>
+  );
+}

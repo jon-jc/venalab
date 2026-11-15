@@ -14,7 +14,7 @@ import { heartbeat, live, OFFSET } from "./live";
 import { arteryMaterial, boneMaterial, fasciaMaterial, fatMaterial, muscleMaterial, nerveMaterial, skinMaterial, skinUniforms, veinMaterial } from "./materials";
 import { Fingerstick } from "./Fingerstick";
 import { effectiveLayers, labelEls, needleHud, TONES, useAtlas, VIEWS, type Layers } from "./store";
-import { Fingertip } from "./Tools";
+import { Cleansing, Fingertip } from "./Tools";
 import { useAnatomy } from "./useAnatomy";
 
 const ORDER: Record<LayerId, number> = { bones: 0, muscles: 1, arteries: 2, nerves: 2, fascia: 3, veins: 4, fat: 5, skin: 6 };
@@ -40,6 +40,10 @@ function Physiology() {
       const e = s.sim.entry;
       live.press.value.set(e[0], e[1], e[2], 0.55);
       want = 0.2 * Math.min(Math.max((live.needle + 3) / 5, 0), 1);
+    } else if (s.mode === "sim" && performance.now() - live.wipe.at < 300) {
+      // the wipe presses lightly as it is rubbed over the skin
+      live.press.value.set(live.wipe.p.x, live.wipe.p.y, live.wipe.p.z, 1.5);
+      want = 0.07;
     } else if (s.mode === "sim" && s.procedure === "venous" && (s.sim.stage === "palpate" || s.demo) && s.palp?.p) {
       const p = s.palp.p;
       live.press.value.set(p[0], p[1], p[2], 0.95);
@@ -230,14 +234,16 @@ const GAUGE = { 21: { r: 0.041, hub: "#2f9e58" }, 22: { r: 0.036, hub: "#2a2d33"
 /** A gauze pad left on the site once the needle is out. */
 function Gauze() {
   const gauze = useAtlas((s) => s.sim.gauze);
+  const kit = useKit();
   const q = useMemo(() => (gauze ? new THREE.Quaternion().setFromUnitVectors(FRONT, new THREE.Vector3(...gauze.n)) : null), [gauze]);
   if (!gauze || !q) return null;
   const p = gauze.p, n = gauze.n;
   return (
-    <mesh position={[p[0] + n[0] * 0.08, p[1] + n[1] * 0.08, p[2] + n[2] * 0.08]} quaternion={q} castShadow receiveShadow>
-      <boxGeometry args={[2.2, 2.2, 0.16, 6, 6, 1]} />
-      <meshStandardMaterial color="#f4f1ea" roughness={0.95} />
-    </mesh>
+    <group position={p} quaternion={q}>
+      <mesh geometry={kit.Gauze} rotation={[Math.PI / 2, 0, 0]} castShadow receiveShadow>
+        <meshStandardMaterial color="#f4f1ea" roughness={0.95} />
+      </mesh>
+    </group>
   );
 }
 
@@ -546,30 +552,6 @@ function Needle() {
   );
 }
 
-/** Alcohol on the skin: a wet sheen over the site that dries away in a few seconds. */
-function Swab() {
-  const site = useAtlas((s) => (s.procedure === "capillary" ? s.cap.site : s.sim.entry));
-  const normal = useAtlas((s) => (s.procedure === "capillary" ? s.cap.normal : s.sim.normal));
-  const at = useAtlas((s) => (s.procedure === "capillary" ? s.cap.cleansedAt : s.sim.cleansedAt));
-  const small = useAtlas((s) => s.procedure === "capillary");
-  const mesh = useRef<THREE.Mesh>(null);
-  const mat = useRef<THREE.MeshPhysicalMaterial>(null);
-  useFrame(() => {
-    if (!mesh.current || !mat.current) return;
-    const wet = at ? Math.max(0, 1 - (Date.now() - at) / 5000) : 0;
-    mesh.current.visible = wet > 0;
-    mat.current.opacity = 0.5 * wet;
-  });
-  if (!site || !normal || !at) return null;
-  const r = small ? 0.75 : 1.7;
-  return (
-    <mesh ref={mesh} position={site} quaternion={new THREE.Quaternion().setFromUnitVectors(FRONT, new THREE.Vector3(...normal))} scale={[r, r, r * 0.16]} renderOrder={7}>
-      <sphereGeometry args={[1, 32, 16]} />
-      <meshPhysicalMaterial ref={mat} color="#e4f4ff" transparent opacity={0.5} roughness={0.02} clearcoat={1} depthWrite={false} />
-    </mesh>
-  );
-}
-
 function Arm() {
   const pattern = useAtlas((s) => s.pattern);
   const tourniquet = useAtlas((s) => s.tourniquet);
@@ -645,6 +627,20 @@ function Arm() {
     const s = useAtlas.getState();
     if (mode !== "sim" || s.demo) return;
     e.stopPropagation();
+    const wiping = s.procedure === "venous" ? s.sim.stage === "cleanse" : s.cap.wiping;
+    if (wiping) {
+      // Rubbing the wipe to and fro over the site is what cleans it.
+      const site = s.procedure === "venous" ? s.sim.entry : s.cap.site;
+      const at = performance.now();
+      const x = e.point.x + OFFSET;
+      const moved = at - live.wipe.at < 400 ? Math.hypot(x - live.wipe.p.x, e.point.y - live.wipe.p.y, e.point.z - live.wipe.p.z) : 0;
+      live.wipe.p.set(x, e.point.y, e.point.z);
+      live.wipe.n.set(...skinNormal(x, e.point.y, e.point.z));
+      live.wipe.at = at;
+      const small = s.procedure === "capillary";
+      if (site && moved > 0 && moved < 4 && Math.hypot(x - site[0], e.point.y - site[1], e.point.z - site[2]) < (small ? 1.4 : 2.8)) s.scrubbed(moved / (small ? 7 : 16));
+      return;
+    }
     // The fingertip is only on the arm while looking for a vein.
     if (s.procedure !== "venous" || s.sim.stage !== "palpate") return;
     const now = performance.now();
@@ -657,7 +653,7 @@ function Arm() {
     e.stopPropagation();
     const s = useAtlas.getState();
     // The site is marked while palpating; to change it, go back to that stage.
-    const busy = s.procedure === "venous" ? s.sim.stage !== "palpate" : s.cap.phase !== "aim";
+    const busy = s.procedure === "venous" ? s.sim.stage !== "palpate" : s.cap.phase !== "aim" || s.cap.wiping;
     if (mode !== "sim" || e.delta > 4 || s.demo || busy) return;
     const p: Vec3 = [e.point.x + OFFSET, e.point.y, e.point.z];
     s.mark(p, skinNormal(p[0], p[1], p[2]));
@@ -694,7 +690,10 @@ function Arm() {
           raycast={blocks("skin") ? meshRaycast : noRaycast}
           onPointerMove={onSkinMove}
           onPointerOver={block}
-          onPointerOut={() => !useAtlas.getState().demo && useAtlas.getState().set({ palp: null })}
+          onPointerOut={() => {
+            live.wipe.at = 0;
+            if (!useAtlas.getState().demo) useAtlas.getState().set({ palp: null });
+          }}
           onClick={onSkinClick}
         >
           <meshPhysicalMaterial
@@ -755,9 +754,17 @@ function Arm() {
           <Needle />
         </Suspense>
       )}
-      {mode === "sim" && procedure === "venous" && <Gauze />}
+      {mode === "sim" && procedure === "venous" && (
+        <Suspense fallback={null}>
+          <Gauze />
+        </Suspense>
+      )}
       {mode === "sim" && procedure === "capillary" && <Fingerstick />}
-      {mode === "sim" && <Swab />}
+      {mode === "sim" && (
+        <Suspense fallback={null}>
+          <Cleansing />
+        </Suspense>
+      )}
       <Suspense fallback={null}>
         <Fingertip />
       </Suspense>

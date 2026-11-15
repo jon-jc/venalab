@@ -51,6 +51,19 @@ function Drying({ at, now }: { at: number | null; now: number }) {
   return left > 0 ? <span className="text-amber-300">Wet — drying… {Math.ceil(left)} s</span> : <span className="text-emerald-300">Cleansed and dry.</span>;
 }
 
+/** How far the scrubbing has got. */
+function Scrub() {
+  const scrub = useAtlas((s) => s.scrub);
+  return (
+    <div className="mt-2">
+      <div className="h-2 overflow-hidden rounded bg-white/10">
+        <div className="h-full rounded bg-accent transition-[width] duration-150" style={{ width: `${Math.round(scrub * 100)}%` }} />
+      </div>
+      <p className="mt-1 text-[11px] text-slate-500">{scrub >= 1 ? "Clean." : scrub > 0 ? "Keep rubbing, back and forth." : "The wipe follows your pointer on the skin."}</p>
+    </div>
+  );
+}
+
 function Debrief({ r, children }: { r: SimResult; children?: React.ReactNode }) {
   return (
     <section className="px-4 py-3">
@@ -77,7 +90,7 @@ function Venous() {
   const tourniquetAt = useAtlas((s) => s.tourniquetAt);
   const demo = useAtlas((s) => s.demo);
   const level = useAtlas((s) => LEVELS[s.difficulty]);
-  const { set, setSim, aim, setDepth, cleanse, finish, withdraw, newPatient, stageTo } = useAtlas.getState();
+  const { set, setSim, aim, setDepth, finish, withdraw, newPatient, stageTo } = useAtlas.getState();
   const now = useNow(tourniquet || !!sim.cleansedAt);
 
   const stage = sim.stage;
@@ -141,15 +154,11 @@ function Venous() {
         </Step>
 
         <Step n={3} title="Cleanse the site" state={state("cleanse")} summary={<Drying at={sim.cleansedAt} now={now} />} onOpen={free && sim.entry ? () => stageTo("cleanse") : undefined}>
-          <p className="text-sm text-slate-200">Scrub the site with 70% isopropyl alcohol, then let it dry before you puncture.</p>
-          <div className="mt-3 flex gap-2">
-            <button className="btn flex-1" onClick={cleanse}>
-              Cleanse with alcohol
-            </button>
-            <button className="btn btn-ghost" onClick={() => stageTo("needle")}>
-              Skip
-            </button>
-          </div>
+          <p className="text-sm text-slate-200">You are holding an alcohol wipe. Rub it back and forth over the marked site until it is clean, then let the skin dry.</p>
+          <Scrub />
+          <button className="btn btn-ghost mt-3 w-full" onClick={() => stageTo("needle")}>
+            Skip cleansing
+          </button>
         </Step>
 
         <Step n={4} title="Needle" state={state("needle")} summary={sim.result ? "Attempt finished" : "—"}>
@@ -226,7 +235,7 @@ function Venous() {
 
 function Capillary() {
   const cap = useAtlas((s) => s.cap);
-  const { setCap, cleanse, capPuncture, capFinish, capReset, goto, newPatient } = useAtlas.getState();
+  const { setCap, capPuncture, capFinish, capReset, goto, newPatient } = useAtlas.getState();
   const now = useNow(!!cap.cleansedAt);
   const aiming = cap.phase === "aim";
   const bleeding = cap.phase === "punctured" || cap.phase === "collecting";
@@ -246,11 +255,12 @@ function Capillary() {
       <Step n={2} title="Site and cleansing">
         <p className="text-sm text-slate-200">{cap.site ? "Site marked. Click another spot to move it." : "Click the spot on a finger where the lancet should go."}</p>
         <div className="mt-2 flex items-center gap-3 text-xs">
-          <Chip onClick={cleanse} disabled={!cap.site || !aiming}>
-            Cleanse with alcohol
+          <Chip on={cap.wiping} onClick={() => setCap({ wiping: !cap.wiping })} disabled={!cap.site || !aiming}>
+            {cap.wiping ? "Put the wipe down" : "Pick up the alcohol wipe"}
           </Chip>
           <Drying at={cap.cleansedAt} now={now} />
         </div>
+        {cap.wiping && <Scrub />}
       </Step>
 
       <Step n={3} title="Lancet">

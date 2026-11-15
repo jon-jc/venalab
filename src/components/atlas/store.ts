@@ -91,6 +91,8 @@ export type CapPhase = "aim" | "punctured" | "collecting" | "done";
 export interface CapState extends CapillaryChoices {
   site: Vec3 | null;
   normal: Vec3 | null;
+  /** The alcohol wipe is in the hand. */
+  wiping: boolean;
   phase: CapPhase;
   cleansedAt: number | null;
   puncturedAt: number | null;
@@ -112,6 +114,8 @@ interface AtlasState {
   clip: number | null;
   tourniquet: boolean;
   tourniquetAt: number | null;
+  /** How thoroughly the site has been scrubbed with the wipe, 0 to 1. */
+  scrub: number;
   selected: string | null;
   hovered: string | null;
   /** Camera request: a named view, or an explicit pose. */
@@ -133,6 +137,8 @@ interface AtlasState {
   /** Mark where the needle (or lancet) will enter. */
   mark: (p: Vec3, n: Vec3) => void;
   cleanse: () => void;
+  /** The wipe has been rubbed a little further over the site. */
+  scrubbed: (amount: number) => void;
   /** Go back to an earlier stage, or on to the next, while the needle is not in the arm. */
   stageTo: (stage: Stage) => void;
   aim: (p: { angle?: number; yaw?: number }) => void;
@@ -148,7 +154,7 @@ interface AtlasState {
 }
 
 const freshSim = { entry: null, normal: null, angle: 25, yaw: 0, depth: HOVER_MM, phase: "aim" as Phase, stage: "tourniquet" as Stage, reveal: false, anchor: false, cleansedAt: null, puncturedAt: null, live: null, worst: null, result: null };
-const freshCap: CapState = { site: null, normal: null, phase: "aim", lancet: 2.0, across: true, warmed: false, wiped: false, milking: false, edtaFirst: true, cleansedAt: null, puncturedAt: null, result: null };
+const freshCap: CapState = { site: null, normal: null, wiping: false, phase: "aim", lancet: 2.0, across: true, warmed: false, wiped: false, milking: false, edtaFirst: true, cleansedAt: null, puncturedAt: null, result: null };
 const SEVERITY = { artery: 3, nerve: 2, through: 1 } as Record<string, number>;
 
 export const useAtlas = create<AtlasState>((set, get) => {
@@ -197,6 +203,7 @@ export const useAtlas = create<AtlasState>((set, get) => {
     clip: null,
     tourniquet: false,
     tourniquetAt: null,
+    scrub: 0,
     selected: null,
     hovered: null,
     view: { id: "full", n: 0 },
@@ -220,10 +227,11 @@ export const useAtlas = create<AtlasState>((set, get) => {
     },
     newPatient: () => {
       const patient = nextPatient(get().difficulty, get().patient.id);
-      set({ patient, pattern: patient.pattern, tone: patient.tone, tourniquet: false, palp: null, cap: freshCap, sim: { ...get().sim, ...freshSim, gauze: null } });
+      set({ patient, pattern: patient.pattern, tone: patient.tone, tourniquet: false, palp: null, scrub: 0, cap: freshCap, sim: { ...get().sim, ...freshSim, gauze: null } });
     },
     mark: (p, n) => {
       const capillary = get().procedure === "capillary";
+      set({ scrub: 0 });
       const last = capillary ? get().cap.site : get().sim.entry;
       if (capillary) set({ cap: { ...get().cap, site: p, normal: n, phase: "aim", cleansedAt: null, puncturedAt: null, result: null } });
       else set({ sim: { ...get().sim, ...freshSim, stage: "cleanse", entry: p, normal: n, angle: get().sim.angle, anchor: get().sim.anchor, gauze: null } });
@@ -233,15 +241,23 @@ export const useAtlas = create<AtlasState>((set, get) => {
       const along = capillary ? 5 : 11;
       set({ view: { id: "site", n: get().view.n + 1, target: p, position: [p[0] + n[0] * back + along, p[1] + n[1] * back - 4, p[2] + n[2] * back] } });
     },
+    scrubbed: (amount) => {
+      const s = get();
+      const wiping = s.procedure === "venous" ? s.sim.stage === "cleanse" : s.cap.wiping;
+      if (!wiping) return;
+      if (s.scrub + amount >= 1) s.cleanse();
+      else set({ scrub: s.scrub + amount });
+    },
     cleanse: () => {
-      if (get().procedure === "capillary") set({ cap: { ...get().cap, cleansedAt: Date.now() } });
+      set({ scrub: 1 });
+      if (get().procedure === "capillary") set({ cap: { ...get().cap, cleansedAt: Date.now(), wiping: false } });
       else set({ sim: { ...get().sim, cleansedAt: Date.now(), stage: get().sim.stage === "cleanse" ? "needle" : get().sim.stage } });
     },
     stageTo: (stage) => {
       const sim = get().sim;
       if (sim.phase !== "aim" || sim.depth > 0) return;
       if (stage === "tourniquet" || stage === "palpate") set({ palp: null, sim: { ...sim, ...freshSim, stage, anchor: sim.anchor, gauze: sim.gauze } });
-      else if (sim.entry && stage === "cleanse") set({ sim: { ...sim, stage, cleansedAt: null } });
+      else if (sim.entry && stage === "cleanse") set({ scrub: 0, sim: { ...sim, stage, cleansedAt: null } });
       else if (sim.entry && stage === "needle") set({ sim: { ...sim, stage } });
     },
     aim: (p) => {
