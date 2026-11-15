@@ -621,6 +621,34 @@ function Arm() {
   );
 
   const lastPalp = useRef(0);
+  // On a touch screen a finger on the skin palpates or scrubs, so it must not also turn the camera.
+  const controls = useThree((s) => s.controls) as OrbitControlsImpl | null;
+  const finger = useRef(false);
+  const touched = useRef(false);
+  const lift = () => {
+    if (!finger.current) return;
+    finger.current = false;
+    if (controls) controls.enabled = true;
+  };
+  useEffect(() => {
+    window.addEventListener("pointerup", lift);
+    window.addEventListener("pointercancel", lift);
+    return () => {
+      window.removeEventListener("pointerup", lift);
+      window.removeEventListener("pointercancel", lift);
+    };
+  });
+  const onSkinDown = (e: ThreeEvent<PointerEvent>) => {
+    touched.current = e.nativeEvent.pointerType === "touch";
+    const s = useAtlas.getState();
+    if (!touched.current || mode !== "sim" || s.demo) return;
+    const wiping = s.procedure === "venous" ? s.sim.stage === "cleanse" : s.cap.wiping;
+    if (!wiping && !(s.procedure === "venous" && s.sim.stage === "palpate")) return;
+    finger.current = true;
+    if (controls) controls.enabled = false;
+    lastPalp.current = 0;
+    onSkinMove(e);
+  };
   const onSkinMove = (e: ThreeEvent<PointerEvent>) => {
     const s = useAtlas.getState();
     if (mode !== "sim" || s.demo) return;
@@ -651,7 +679,7 @@ function Arm() {
     if (now - lastPalp.current < 60) return;
     lastPalp.current = now;
     const p: Vec3 = [e.point.x + OFFSET, e.point.y, e.point.z];
-    useAtlas.getState().set({ palp: { ...palpate(built, p, tourniquet), p, n: skinNormal(p[0], p[1], p[2]) } });
+    useAtlas.getState().set({ palp: { ...palpate(built, p, tourniquet), p, n: skinNormal(p[0], p[1], p[2]), held: e.nativeEvent.pointerType === "touch" } });
   };
   const onSkinClick = (e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
@@ -659,6 +687,8 @@ function Arm() {
     // The site is marked while palpating; to change it, go back to that stage.
     const busy = s.procedure === "venous" ? s.sim.stage !== "palpate" : s.cap.step !== 2;
     if (mode !== "sim" || e.delta > 4 || s.demo || busy) return;
+    // A tap on a touch screen feels the vein; the site is then marked from the panel.
+    if (touched.current && s.procedure === "venous") return;
     const p: Vec3 = [e.point.x + OFFSET, e.point.y, e.point.z];
     s.mark(p, skinNormal(p[0], p[1], p[2]));
   };
@@ -692,11 +722,13 @@ function Arm() {
           castShadow={layers.skin >= 1}
           receiveShadow
           raycast={blocks("skin") ? meshRaycast : noRaycast}
+          onPointerDown={onSkinDown}
           onPointerMove={onSkinMove}
           onPointerOver={block}
           onPointerOut={() => {
             live.wipe.at = 0;
-            if (!useAtlas.getState().demo) useAtlas.getState().set({ palp: null });
+            // A finger lifted from a touch screen leaves what it felt in place.
+            if (!useAtlas.getState().demo && !useAtlas.getState().palp?.held) useAtlas.getState().set({ palp: null });
           }}
           onClick={onSkinClick}
         >

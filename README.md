@@ -19,7 +19,9 @@ The site opens here. Two procedures can be practised on the same living arm.
 
 **Patients and difficulty.** Four levels, from Beginner to Expert, draw from nine kinds of arm: athletic, average, an M-shaped vein pattern, deep skin tone, higher body weight, dehydration, a slender older adult, obesity, and a frail elderly patient. The arm is re-modelled for each one — more tissue, deeper or smaller veins, veins that show less or roll more. Higher levels take away the X-ray, the measurements and the hints, and mark every step.
 
-A **guided demonstration** plays a textbook venipuncture, narrated step by step.
+A **30-second demonstration** plays a textbook venipuncture, narrated step by step. It is the first button on the page, and `/atlas?demo` starts it as soon as the arm is built — the quickest way to show VenaLab to someone.
+
+**On a phone** the model has the top of the screen and the practice panel scrolls beneath it. A finger on the arm palpates (then *Mark this site*), scrubs with the wipe and drags the needle; the camera views are under *Views*.
 
 **Fingerstick (capillary puncture)** follows the same pattern: warm the hand, choose the site, cleanse it with the wipe, set and fire the lancet, collect.
 - The finger under the pointer is named as you move, and at the easier levels the recommended places on the pads of the middle and ring fingers are marked
