@@ -1,4 +1,4 @@
-/** Evacuated tubes in the recommended order of draw. */
+/** Evacuated tubes in the CLSI order of draw (PRE02, formerly GP41). Inversions are typical manufacturers' figures. */
 export interface Tube {
   id: string;
   cap: string;

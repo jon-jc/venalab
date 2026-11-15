@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { Difficulty } from "@/lib/anatomy/patients";
 import type { SimResult } from "@/lib/anatomy/sim";
+import { Cite } from "@/components/reference/Cite";
 import { playDemo, stopDemo } from "./demo";
 import { HOVER_MM, LEVELS, STAGES, useAtlas, type Stage } from "./store";
 
@@ -138,6 +139,7 @@ function Venous() {
             </button>
           </div>
           <p className="mt-2 text-[11px] text-slate-500">It must not stay on for more than 1 minute — a clock starts as soon as it is on.</p>
+          <Cite ids={["clsi-venous"]} className="mt-1" />
         </Step>
 
         <Step n={2} title="Find the vein" state={state("palpate")} summary={sim.entry ? "Site marked" : "—"} onOpen={free ? () => stageTo("palpate") : undefined}>
@@ -150,12 +152,15 @@ function Venous() {
             </span>
           </div>
           <p className="mt-2 text-[11px] text-slate-500">A vein is soft and bouncy. A pulse means artery. A hard cord is tendon.</p>
+          <Cite ids={["clsi-venous", "who"]} className="mt-1" />
           {release}
         </Step>
 
         <Step n={3} title="Cleanse the site" state={state("cleanse")} summary={<Drying at={sim.cleansedAt} now={now} />} onOpen={free && sim.entry ? () => stageTo("cleanse") : undefined}>
-          <p className="text-sm text-slate-200">You are holding an alcohol wipe. Rub it back and forth over the marked site until it is clean, then let the skin dry.</p>
+          <p className="text-sm text-slate-200">You are holding a 70% isopropyl alcohol wipe. Rub it back and forth over the marked site until it is clean, then let the skin dry.</p>
           <Scrub />
+          <p className="mt-2 text-[11px] text-slate-500">At the bedside the alcohol needs about 30 seconds to dry. Here it takes a few.</p>
+          <Cite ids={["clsi-venous", "who"]} className="mt-1" />
           <button className="btn btn-ghost mt-3 w-full" onClick={() => stageTo("needle")}>
             Skip cleansing
           </button>
@@ -198,6 +203,7 @@ function Venous() {
             </label>
           </div>
           {level.hints && held && <p className={`mt-2 text-xs ${live === "success" ? "text-emerald-300" : "text-slate-400"}`}>{status}</p>}
+          <Cite ids={["clsi-venous", "who"]} className="mt-2" />
           {release}
           <div className="mt-3 flex gap-2">
             <button className="btn flex-1" disabled={!held || !inSkin} onClick={finish}>
@@ -227,6 +233,8 @@ function Venous() {
           <button className="btn btn-ghost mt-2 w-full" onClick={newPatient}>
             Next patient
           </button>
+          <p className="mt-3 text-[11px] leading-relaxed text-slate-500">Afterwards: activate the safety device and drop the needle and holder into the sharps container as one unit. Never recap a used needle, and never use one twice.</p>
+          <Cite ids={["clsi-venous", "who", "osha", "cdc-injection"]} className="mt-1" />
         </Debrief>
       )}
     </>
@@ -246,6 +254,7 @@ function Capillary() {
     <>
       <Step n={1} title="Prepare the hand" state={state(1)} summary={cap.warmed ? "Warmed" : "Not warmed"} onOpen={before ? () => capStep(1) : undefined}>
         <p className="text-sm text-slate-200">A cold hand barely bleeds. Three to five minutes of warmth increases capillary flow several-fold.</p>
+        <Cite ids={["clsi-capillary"]} className="mt-1" />
         <div className="mt-3 flex gap-2">
           <button
             className="btn flex-1"
@@ -274,11 +283,13 @@ function Capillary() {
         <button className="btn btn-ghost mt-3 w-full" onClick={() => goto("fingers")}>
           View the fingertips
         </button>
+        <Cite ids={["who-capillary", "clsi-capillary"]} className="mt-2" />
       </Step>
 
       <Step n={3} title="Cleanse the site" state={state(3)} summary={<Drying at={cap.cleansedAt} now={now} />} onOpen={before && cap.site ? () => capStep(3) : undefined}>
-        <p className="text-sm text-slate-200">You are holding an alcohol wipe. Rub it back and forth over the ringed site until it is clean, then let the skin dry.</p>
+        <p className="text-sm text-slate-200">You are holding a 70% isopropyl alcohol wipe. Rub it back and forth over the ringed site until it is clean, then let the skin dry.</p>
         <Scrub />
+        <Cite ids={["who-capillary"]} className="mt-2" />
         <button className="btn btn-ghost mt-3 w-full" onClick={() => capStep(4)}>
           Skip cleansing
         </button>
@@ -288,7 +299,7 @@ function Capillary() {
         <div className="text-xs">
           <Drying at={cap.cleansedAt} now={now} />
         </div>
-        <p className="mb-1.5 mt-2 text-[11px] text-slate-400">Puncture depth</p>
+        <p className="mb-1.5 mt-2 text-[11px] text-slate-400">Puncture depth — this patient is an adult</p>
         <div className="flex flex-wrap gap-1.5">
           {[1.0, 1.5, 2.2, 2.8].map((d) => (
             <Chip key={d} on={cap.lancet === d} onClick={() => setCap({ lancet: d })}>
@@ -313,6 +324,7 @@ function Capillary() {
             Change site
           </button>
         </div>
+        <Cite ids={["who-capillary"]} className="mt-2" />
       </Step>
 
       <Step n={5} title="Collect" state={cap.phase === "done" ? "done" : state(5)} summary={cap.phase === "done" ? "Finished" : "—"}>
@@ -348,6 +360,7 @@ function Capillary() {
             Finish
           </button>
         </div>
+        <Cite ids={["who-capillary", "clsi-capillary"]} className="mt-2" />
       </Step>
 
       {cap.result && (
@@ -360,6 +373,8 @@ function Capillary() {
               Next patient
             </button>
           </div>
+          <p className="mt-3 text-[11px] leading-relaxed text-slate-500">Afterwards: the lancet goes straight into the sharps container. It is used once, on one patient.</p>
+          <Cite ids={["who-capillary", "osha", "cdc-injection"]} className="mt-1" />
         </Debrief>
       )}
     </>
