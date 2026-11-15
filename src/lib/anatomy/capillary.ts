@@ -63,6 +63,21 @@ export function locate(p: Vec3): FingerSite {
   return best;
 }
 
+/** A few words naming the finger under the pointer and, where hints are given, the part of it. */
+export function describe(at: FingerSite, hints: boolean): string {
+  if (!at.onTip) return "Not a fingertip";
+  const finger = at.digit === 0 ? "Thumb" : `${at.name} finger`;
+  if (!hints) return finger;
+  const where =
+    at.around > 115 ? "back of the finger"
+    : at.around > 70 ? "side of the finger"
+    : at.along > 1.12 ? "very tip"
+    : at.along < 0.3 ? "near the joint crease"
+    : at.around < 14 ? "centre of the pad"
+    : "pad, just off-centre";
+  return `${finger} — ${where}`;
+}
+
 export function evaluateCapillary(site: Vec3, c: CapillaryChoices, timing: { cleansedAt: number | null; puncturedAt: number | null }): SimResult {
   const at = locate(site);
   const notes: Note[] = [];
