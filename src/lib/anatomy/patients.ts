@@ -2,7 +2,11 @@ import type { Pattern } from "./structures";
 
 export type Difficulty = "beginner" | "intermediate" | "advanced" | "expert";
 
-/** An arm to practise on. Everything here changes what the collector sees, feels or has to do. */
+/**
+ * An arm to practise on. Everything here changes what the collector sees,
+ * feels or has to do. Every patient is invented: a description of a kind of
+ * arm, never a record of a person.
+ */
 export interface Patient {
   id: string;
   title: string;

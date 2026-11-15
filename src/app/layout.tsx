@@ -5,7 +5,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "VenaLab — 3D venous anatomy & venipuncture trainer",
   description:
-    "Layered 3D atlas of the arm and hand veins, a venipuncture simulator, and photo-based vein mapping for phlebotomy education.",
+    "Layered 3D atlas of the arm and hand veins, a venipuncture simulator, and photo-based vein mapping for phlebotomy education. An educational tool, not medical advice; every patient in it is synthetic.",
 };
 
 const NAV = [
@@ -47,6 +47,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               ))}
             </nav>
           </div>
+          {/* Shown on every page: what this is, and what it is not. */}
+          <p className="flex h-6 items-center justify-center gap-1.5 border-t border-white/10 bg-ink-900/80 px-3 text-[11px] text-slate-400">
+            <span className="font-semibold text-slate-200">Educational tool</span>
+            <span aria-hidden>·</span>
+            <span>not medical advice</span>
+            <span aria-hidden>·</span>
+            <span>synthetic patients only</span>
+            <Link href="/reference#sources" className="ml-1 hidden text-accent hover:underline sm:inline">
+              Sources
+            </Link>
+          </p>
         </header>
         <main className="flex-1">{children}</main>
       </body>

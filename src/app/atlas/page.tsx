@@ -21,7 +21,7 @@ export default function AtlasPage() {
   }, []);
 
   return (
-    <div className="relative h-[calc(100dvh-56px)] overflow-hidden" style={{ background: nir ? "#020806" : undefined }}>
+    <div className="relative h-[calc(100dvh-80px)] overflow-hidden" style={{ background: nir ? "#020806" : undefined }}>
       <div className="absolute inset-0">
         <Scene />
       </div>
