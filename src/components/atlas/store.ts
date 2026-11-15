@@ -39,7 +39,7 @@ export const VIEWS: Record<string, { label: string; target: Vec3; position: Vec3
   fossa: { label: "Antecubital fossa", target: [0.5, 0, 2], position: [2, -1, 40] },
   forearm: { label: "Anterior forearm", target: [13, 0, 1], position: [13, 0, 46] },
   dorsum: { label: "Dorsal hand", target: [34, 0.8, 0], position: [36, 6, -38] },
-  fingers: { label: "Fingertips", target: [41.5, 0.5, 2.6], position: [56, -1, 26] },
+  fingers: { label: "Fingertips", target: [41.5, 0.3, 2.6], position: [40, -1, 19] },
   wrist: { label: "Radial wrist", target: [25, 2, 0], position: [25, 26, 16] },
   medial: { label: "Medial elbow", target: [-1, -2, 1], position: [-1, -30, 24] },
 };
@@ -93,6 +93,8 @@ export interface CapState extends CapillaryChoices {
   normal: Vec3 | null;
   /** The alcohol wipe is in the hand. */
   wiping: boolean;
+  /** Which step of the fingerstick is open: 1 prepare, 2 site, 3 cleanse, 4 lancet, 5 collect. */
+  step: number;
   phase: CapPhase;
   cleansedAt: number | null;
   puncturedAt: number | null;
@@ -151,10 +153,12 @@ interface AtlasState {
   capPuncture: () => void;
   capFinish: () => void;
   capReset: () => void;
+  /** Open a step of the fingerstick, before the lancet has been fired. */
+  capStep: (step: number) => void;
 }
 
 const freshSim = { entry: null, normal: null, angle: 25, yaw: 0, depth: HOVER_MM, phase: "aim" as Phase, stage: "tourniquet" as Stage, reveal: false, anchor: false, cleansedAt: null, puncturedAt: null, live: null, worst: null, result: null };
-const freshCap: CapState = { site: null, normal: null, wiping: false, phase: "aim", lancet: 2.0, across: true, warmed: false, wiped: false, milking: false, edtaFirst: true, cleansedAt: null, puncturedAt: null, result: null };
+const freshCap: CapState = { site: null, normal: null, wiping: false, step: 1, phase: "aim", lancet: 2.0, across: true, warmed: false, wiped: false, milking: false, edtaFirst: true, cleansedAt: null, puncturedAt: null, result: null };
 const SEVERITY = { artery: 3, nerve: 2, through: 1 } as Record<string, number>;
 
 export const useAtlas = create<AtlasState>((set, get) => {
@@ -233,7 +237,7 @@ export const useAtlas = create<AtlasState>((set, get) => {
       const capillary = get().procedure === "capillary";
       set({ scrub: 0 });
       const last = capillary ? get().cap.site : get().sim.entry;
-      if (capillary) set({ cap: { ...get().cap, site: p, normal: n, phase: "aim", cleansedAt: null, puncturedAt: null, result: null } });
+      if (capillary) set({ cap: { ...get().cap, site: p, normal: n, phase: "aim", step: 3, wiping: true, cleansedAt: null, puncturedAt: null, result: null } });
       else set({ sim: { ...get().sim, ...freshSim, stage: "cleanse", entry: p, normal: n, angle: get().sim.angle, anchor: get().sim.anchor, gauze: null } });
       // Bring the camera in close, looking down on the site from the patient's hand, unless it is already there.
       if (last && Math.hypot(p[0] - last[0], p[1] - last[1], p[2] - last[2]) < 6) return;
@@ -250,7 +254,7 @@ export const useAtlas = create<AtlasState>((set, get) => {
     },
     cleanse: () => {
       set({ scrub: 1 });
-      if (get().procedure === "capillary") set({ cap: { ...get().cap, cleansedAt: Date.now(), wiping: false } });
+      if (get().procedure === "capillary") set({ cap: { ...get().cap, cleansedAt: Date.now(), wiping: false, step: 4 } });
       else set({ sim: { ...get().sim, cleansedAt: Date.now(), stage: get().sim.stage === "cleanse" ? "needle" : get().sim.stage } });
     },
     stageTo: (stage) => {
@@ -309,7 +313,7 @@ export const useAtlas = create<AtlasState>((set, get) => {
     resetSim: () => set({ sim: { ...get().sim, ...freshSim, stage: get().sim.result ? "done" : "tourniquet", result: get().sim.result, reveal: get().sim.reveal && !!get().sim.result } }),
     capPuncture: () => {
       const cap = get().cap;
-      if (cap.site && cap.phase === "aim") set({ cap: { ...cap, phase: "punctured", puncturedAt: Date.now(), wiped: false } });
+      if (cap.site && cap.phase === "aim") set({ cap: { ...cap, phase: "punctured", step: 5, puncturedAt: Date.now(), wiped: false } });
     },
     capFinish: () => {
       const { cap, sim } = get();
@@ -317,7 +321,14 @@ export const useAtlas = create<AtlasState>((set, get) => {
       const result = evaluateCapillary(cap.site, cap, { cleansedAt: cap.cleansedAt, puncturedAt: cap.puncturedAt });
       set({ cap: { ...cap, phase: "done", result }, sim: { ...sim, attempts: sim.attempts + 1, hits: sim.hits + (result.outcome === "success" ? 1 : 0), total: sim.total + result.score } });
     },
-    capReset: () => set({ cap: { ...freshCap, lancet: get().cap.lancet } }),
+    capReset: () => set({ scrub: 0, cap: { ...freshCap, lancet: get().cap.lancet, warmed: get().cap.warmed, step: 2 } }),
+    capStep: (step) => {
+      const cap = get().cap;
+      if (cap.phase !== "aim") return;
+      if (step <= 2) set({ scrub: 0, cap: { ...cap, step, site: null, normal: null, wiping: false, cleansedAt: null } });
+      else if (cap.site && step === 3) set({ scrub: 0, cap: { ...cap, step, wiping: true, cleansedAt: null } });
+      else if (cap.site && step === 4) set({ cap: { ...cap, step, wiping: false } });
+    },
   };
 });
 

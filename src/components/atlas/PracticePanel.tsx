@@ -235,88 +235,118 @@ function Venous() {
 
 function Capillary() {
   const cap = useAtlas((s) => s.cap);
-  const { setCap, capPuncture, capFinish, capReset, goto, newPatient } = useAtlas.getState();
+  const hints = useAtlas((s) => LEVELS[s.difficulty].hints);
+  const { setCap, capPuncture, capFinish, capReset, capStep, goto, newPatient } = useAtlas.getState();
   const now = useNow(!!cap.cleansedAt);
-  const aiming = cap.phase === "aim";
-  const bleeding = cap.phase === "punctured" || cap.phase === "collecting";
+  const step = cap.step;
+  const state = (n: number) => (n < step ? "done" : n === step ? "now" : "next");
+  const before = cap.phase === "aim";
 
   return (
     <>
-      <Step n={1} title="Prepare">
-        <div className="flex flex-wrap gap-1.5">
-          <Chip on={cap.warmed} disabled={!aiming} onClick={() => setCap({ warmed: !cap.warmed })}>
+      <Step n={1} title="Prepare the hand" state={state(1)} summary={cap.warmed ? "Warmed" : "Not warmed"} onOpen={before ? () => capStep(1) : undefined}>
+        <p className="text-sm text-slate-200">A cold hand barely bleeds. Three to five minutes of warmth increases capillary flow several-fold.</p>
+        <div className="mt-3 flex gap-2">
+          <button
+            className="btn flex-1"
+            onClick={() => {
+              setCap({ warmed: true });
+              capStep(2);
+            }}
+          >
             Warm the hand
-          </Chip>
-          <Chip onClick={() => goto("fingers")}>View the fingertips</Chip>
+          </button>
+          <button
+            className="btn btn-ghost"
+            onClick={() => {
+              setCap({ warmed: false });
+              capStep(2);
+            }}
+          >
+            Skip
+          </button>
         </div>
-        <p className="mt-2 text-[11px] text-slate-500">Three to five minutes of warmth increases capillary flow several-fold.</p>
       </Step>
 
-      <Step n={2} title="Site and cleansing">
-        <p className="text-sm text-slate-200">{cap.site ? "Site marked. Click another spot to move it." : "Click the spot on a finger where the lancet should go."}</p>
-        <div className="mt-2 flex items-center gap-3 text-xs">
-          <Chip on={cap.wiping} onClick={() => setCap({ wiping: !cap.wiping })} disabled={!cap.site || !aiming}>
-            {cap.wiping ? "Put the wipe down" : "Pick up the alcohol wipe"}
-          </Chip>
+      <Step n={2} title="Choose the site" state={state(2)} summary={cap.site ? "Site marked" : "—"} onOpen={before ? () => capStep(2) : undefined}>
+        <p className="text-sm text-slate-200">Click the spot on a fingertip where the lancet should go. The finger under your pointer is named as you move.</p>
+        {hints && <p className="mt-2 rounded-lg bg-accent/10 px-3 py-2 text-[12px] leading-relaxed text-emerald-100">The green patches show the recommended places: the pad of the middle or ring finger, a little to one side of the midline.</p>}
+        <button className="btn btn-ghost mt-3 w-full" onClick={() => goto("fingers")}>
+          View the fingertips
+        </button>
+      </Step>
+
+      <Step n={3} title="Cleanse the site" state={state(3)} summary={<Drying at={cap.cleansedAt} now={now} />} onOpen={before && cap.site ? () => capStep(3) : undefined}>
+        <p className="text-sm text-slate-200">You are holding an alcohol wipe. Rub it back and forth over the ringed site until it is clean, then let the skin dry.</p>
+        <Scrub />
+        <button className="btn btn-ghost mt-3 w-full" onClick={() => capStep(4)}>
+          Skip cleansing
+        </button>
+      </Step>
+
+      <Step n={4} title="Lancet" state={state(4)} summary={`${cap.lancet.toFixed(1)} mm · ${cap.across ? "across" : "along"}`}>
+        <div className="text-xs">
           <Drying at={cap.cleansedAt} now={now} />
         </div>
-        {cap.wiping && <Scrub />}
-      </Step>
-
-      <Step n={3} title="Lancet">
-        <p className="mb-1.5 text-[11px] text-slate-400">Puncture depth</p>
+        <p className="mb-1.5 mt-2 text-[11px] text-slate-400">Puncture depth</p>
         <div className="flex flex-wrap gap-1.5">
           {[1.0, 1.5, 2.0, 2.4].map((d) => (
-            <Chip key={d} on={cap.lancet === d} disabled={!aiming} onClick={() => setCap({ lancet: d })}>
+            <Chip key={d} on={cap.lancet === d} onClick={() => setCap({ lancet: d })}>
               {d.toFixed(1)} mm
             </Chip>
           ))}
         </div>
         <p className="mb-1.5 mt-3 text-[11px] text-slate-400">Blade, relative to the fingerprint ridges</p>
         <div className="flex gap-1.5">
-          <Chip on={cap.across} disabled={!aiming} onClick={() => setCap({ across: true })}>
+          <Chip on={cap.across} onClick={() => setCap({ across: true })}>
             Across
           </Chip>
-          <Chip on={!cap.across} disabled={!aiming} onClick={() => setCap({ across: false })}>
+          <Chip on={!cap.across} onClick={() => setCap({ across: false })}>
             Along
           </Chip>
         </div>
-        <button className="btn mt-3 w-full" disabled={!cap.site || !aiming} onClick={capPuncture}>
-          Fire the lancet
-        </button>
+        <div className="mt-3 flex gap-2">
+          <button className="btn flex-1" onClick={capPuncture}>
+            Fire the lancet
+          </button>
+          <button className="btn btn-ghost" onClick={() => capStep(2)}>
+            Change site
+          </button>
+        </div>
       </Step>
 
-      <Step n={4} title="Collect">
-        <div className={bleeding ? "" : "pointer-events-none opacity-40"}>
+      <Step n={5} title="Collect" state={cap.phase === "done" ? "done" : state(5)} summary={cap.phase === "done" ? "Finished" : "—"}>
+        <p className="text-sm text-slate-200">A drop is forming. Decide how to collect it.</p>
+        <div className="mt-2">
           <Chip on={cap.wiped} disabled={cap.phase !== "punctured"} onClick={() => setCap({ wiped: true })}>
             {cap.wiped ? "First drop wiped away" : "Wipe away the first drop"}
           </Chip>
-          <p className="mb-1.5 mt-3 text-[11px] text-slate-400">Pressure on the finger</p>
-          <div className="flex gap-1.5">
-            <Chip on={!cap.milking} onClick={() => setCap({ milking: false })}>
-              Gentle, intermittent
-            </Chip>
-            <Chip on={cap.milking} onClick={() => setCap({ milking: true })}>
-              Squeeze hard
-            </Chip>
-          </div>
-          <p className="mb-1.5 mt-3 text-[11px] text-slate-400">Tube to fill first</p>
-          <div className="flex gap-1.5">
-            <Chip on={cap.edtaFirst} disabled={cap.phase !== "punctured"} onClick={() => setCap({ edtaFirst: true })}>
-              EDTA (lavender)
-            </Chip>
-            <Chip on={!cap.edtaFirst} disabled={cap.phase !== "punctured"} onClick={() => setCap({ edtaFirst: false })}>
-              Serum (gold)
-            </Chip>
-          </div>
-          <div className="mt-3 flex gap-2">
-            <button className="btn btn-ghost flex-1" disabled={cap.phase !== "punctured"} onClick={() => setCap({ phase: "collecting" })}>
-              Collect the drop
-            </button>
-            <button className="btn flex-1" disabled={cap.phase !== "collecting"} onClick={capFinish}>
-              Finish
-            </button>
-          </div>
+        </div>
+        <p className="mb-1.5 mt-3 text-[11px] text-slate-400">Pressure on the finger</p>
+        <div className="flex gap-1.5">
+          <Chip on={!cap.milking} onClick={() => setCap({ milking: false })}>
+            Gentle, intermittent
+          </Chip>
+          <Chip on={cap.milking} onClick={() => setCap({ milking: true })}>
+            Squeeze hard
+          </Chip>
+        </div>
+        <p className="mb-1.5 mt-3 text-[11px] text-slate-400">Tube to fill first</p>
+        <div className="flex gap-1.5">
+          <Chip on={cap.edtaFirst} disabled={cap.phase !== "punctured"} onClick={() => setCap({ edtaFirst: true })}>
+            EDTA (lavender)
+          </Chip>
+          <Chip on={!cap.edtaFirst} disabled={cap.phase !== "punctured"} onClick={() => setCap({ edtaFirst: false })}>
+            Serum (gold)
+          </Chip>
+        </div>
+        <div className="mt-3 flex gap-2">
+          <button className="btn btn-ghost flex-1" disabled={cap.phase !== "punctured"} onClick={() => setCap({ phase: "collecting" })}>
+            Collect the drop
+          </button>
+          <button className="btn flex-1" disabled={cap.phase !== "collecting"} onClick={capFinish}>
+            Finish
+          </button>
         </div>
       </Step>
 

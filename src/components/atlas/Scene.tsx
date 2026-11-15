@@ -641,8 +641,14 @@ function Arm() {
       if (site && moved > 0 && moved < 4 && Math.hypot(x - site[0], e.point.y - site[1], e.point.z - site[2]) < (small ? 1.4 : 2.8)) s.scrubbed(moved / (small ? 7 : 16));
       return;
     }
+    if (s.procedure === "capillary") {
+      // While choosing a fingerstick site, the scene names the finger under the pointer.
+      live.hover.p.set(e.point.x + OFFSET, e.point.y, e.point.z);
+      live.hover.at = performance.now();
+      return;
+    }
     // The fingertip is only on the arm while looking for a vein.
-    if (s.procedure !== "venous" || s.sim.stage !== "palpate") return;
+    if (s.sim.stage !== "palpate") return;
     const now = performance.now();
     if (now - lastPalp.current < 60) return;
     lastPalp.current = now;
@@ -653,7 +659,7 @@ function Arm() {
     e.stopPropagation();
     const s = useAtlas.getState();
     // The site is marked while palpating; to change it, go back to that stage.
-    const busy = s.procedure === "venous" ? s.sim.stage !== "palpate" : s.cap.phase !== "aim" || s.cap.wiping;
+    const busy = s.procedure === "venous" ? s.sim.stage !== "palpate" : s.cap.step !== 2;
     if (mode !== "sim" || e.delta > 4 || s.demo || busy) return;
     const p: Vec3 = [e.point.x + OFFSET, e.point.y, e.point.z];
     s.mark(p, skinNormal(p[0], p[1], p[2]));
@@ -759,7 +765,11 @@ function Arm() {
           <Gauze />
         </Suspense>
       )}
-      {mode === "sim" && procedure === "capillary" && <Fingerstick />}
+      {mode === "sim" && procedure === "capillary" && (
+        <Suspense fallback={null}>
+          <Fingerstick />
+        </Suspense>
+      )}
       {mode === "sim" && (
         <Suspense fallback={null}>
           <Cleansing />
