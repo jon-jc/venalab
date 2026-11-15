@@ -39,7 +39,7 @@ export const VIEWS: Record<string, { label: string; target: Vec3; position: Vec3
   fossa: { label: "Antecubital fossa", target: [0.5, 0, 2], position: [2, -1, 40] },
   forearm: { label: "Anterior forearm", target: [13, 0, 1], position: [13, 0, 46] },
   dorsum: { label: "Dorsal hand", target: [34, 0.8, 0], position: [36, 6, -38] },
-  fingers: { label: "Fingertips", target: [41.5, 0.3, 2.6], position: [40, -1, 19] },
+  fingers: { label: "Fingertips", target: [42.6, 0.2, 2.0], position: [41.8, -0.8, 27] },
   wrist: { label: "Radial wrist", target: [25, 2, 0], position: [25, 26, 16] },
   medial: { label: "Medial elbow", target: [-1, -2, 1], position: [-1, -30, 24] },
 };
