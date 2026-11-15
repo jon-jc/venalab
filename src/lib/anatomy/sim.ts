@@ -227,6 +227,8 @@ export interface Palpation {
   text: string;
   /** Measurements, shown only at levels that give them. */
   detail?: string;
+  /** A few words for the readout beside the fingertip. */
+  label?: string;
   /** Where on the skin the finger is, and the surface normal there. */
   p?: Vec3;
   n?: Vec3;
@@ -277,9 +279,10 @@ export function palpate(built: Built[], p: Vec3, tourniquet: boolean): Palpation
       : gap < 0.42
         ? "Soft, bouncy and resilient — springs back when pressed."
         : "Deep and faint: a soft fullness you only find with firm, slow pressure.";
-    return { kind: "vein", text: feel, detail: `Vein ≈ ${mm(vein.r * 2)} wide, ≈ ${mm(depth)} under the skin.` };
+    const label = !tourniquet ? "Vein — faint" : gap < 0.42 ? "Vein — soft and bouncy" : "Deep vein — faint";
+    return { kind: "vein", text: feel, label, detail: `Vein ≈ ${mm(vein.r * 2)} wide, ≈ ${mm(depth)} under the skin.` };
   }
-  if (artery && artery.d < 1.35) return { kind: "artery", text: "Pulsatile beneath your finger — this is an artery. Do not puncture here." };
-  if (tendon && tendon.d < 1.0) return { kind: "tendon", text: "Firm and cord-like with no bounce — tendon, not vein." };
-  return { kind: "none", text: "Nothing distinct — no palpable vessel here." };
+  if (artery && artery.d < 1.35) return { kind: "artery", label: "Pulse — artery", text: "Pulsatile beneath your finger — this is an artery. Do not puncture here." };
+  if (tendon && tendon.d < 1.0) return { kind: "tendon", label: "Hard cord — tendon", text: "Firm and cord-like with no bounce — tendon, not vein." };
+  return { kind: "none", label: "Nothing distinct", text: "Nothing distinct — no palpable vessel here." };
 }
