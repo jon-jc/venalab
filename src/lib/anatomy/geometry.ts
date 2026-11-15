@@ -249,6 +249,36 @@ export function segDist2(p: Vec3, a: Vec3, b: Vec3): [number, number] {
 }
 
 /**
+ * Surface gradient of a per-vertex scalar (per cm), estimated from mesh edges.
+ * Lets the skin shader tilt its normals where veins raise the surface.
+ */
+export function surfaceGradient(g: THREE.BufferGeometry, value: Float32Array): Float32Array {
+  const pos = g.getAttribute("position") as THREE.BufferAttribute;
+  const idx = g.getIndex()!.array;
+  const out = new Float32Array(pos.count * 3);
+  const valence = new Uint16Array(pos.count);
+  const edge = (i: number, j: number) => {
+    const ex = pos.getX(j) - pos.getX(i), ey = pos.getY(j) - pos.getY(i), ez = pos.getZ(j) - pos.getZ(i);
+    const k = (value[j] - value[i]) / Math.max(ex * ex + ey * ey + ez * ez, 1e-8);
+    out[i * 3] += ex * k;
+    out[i * 3 + 1] += ey * k;
+    out[i * 3 + 2] += ez * k;
+    valence[i]++;
+  };
+  for (let t = 0; t < idx.length; t += 3) {
+    const a = idx[t], b = idx[t + 1], c = idx[t + 2];
+    edge(a, b); edge(b, c); edge(c, a);
+  }
+  for (let i = 0; i < pos.count; i++) {
+    const k = 2 / Math.max(valence[i], 1);
+    out[i * 3] *= k;
+    out[i * 3 + 1] *= k;
+    out[i * 3 + 2] *= k;
+  }
+  return out;
+}
+
+/**
  * How strongly each skin vertex shows an underlying superficial vein (0..1).
  * Used to tint the skin so veins are faintly visible, as on a real arm.
  */

@@ -75,7 +75,7 @@ interface AtlasState {
   built: Built[];
   palp: Palpation | null;
   /** Caption of the guided demonstration while it is playing. */
-  demo: { step: number; caption: string } | null;
+  demo: { step: number; total: number; caption: string } | null;
   sim: SimState;
   set: (p: Partial<AtlasState>) => void;
   setLayer: (id: LayerId, v: number) => void;

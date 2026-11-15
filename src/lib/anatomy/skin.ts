@@ -205,14 +205,14 @@ function smin(a: number, b: number, k: number): number {
  * feel, and the main muscle bellies. [centre, radius, blend width]
  */
 const LANDMARKS: ReadonlyArray<readonly [Vec3, number, number]> = [
-  [[-10.5, 0.3, 2.9], 2.5, 1.6], // biceps belly
-  [[-1.6, -0.7, -3.3], 1.5, 1.1], // olecranon
-  [[-0.7, -3.9, -1.0], 1.3, 1.0], // medial epicondyle
-  [[-0.5, 3.7, -0.9], 1.15, 1.0], // lateral epicondyle
-  [[5.5, 3.3, 1.3], 2.0, 1.6], // brachioradialis / mobile wad
-  [[6.0, -2.6, 1.6], 2.2, 1.8], // flexor–pronator mass
-  [[25.2, -2.2, -1.25], 0.95, 0.7], // head of ulna
-  [[26.2, 2.65, -0.15], 0.8, 0.7], // radial styloid
+  [[-10.5, 0.3, 2.7], 2.5, 1.2], // biceps belly
+  [[-1.6, -0.7, -3.0], 1.4, 0.9], // olecranon
+  [[-0.7, -3.55, -1.0], 1.2, 0.8], // medial epicondyle
+  [[-0.5, 3.4, -0.9], 1.05, 0.8], // lateral epicondyle
+  [[5.5, 2.75, 1.3], 2.0, 1.0], // brachioradialis / mobile wad
+  [[6.0, -2.4, 1.5], 2.3, 1.0], // flexor–pronator mass
+  [[25.2, -2.15, -1.2], 0.9, 0.6], // head of ulna
+  [[26.2, 2.55, -0.15], 0.75, 0.6], // radial styloid
   [[30.6, -3.0, 0.7], 1.45, 0.9], // hypothenar eminence
   ...DIGITS.slice(1).map((d): readonly [Vec3, number, number] => [[d.joints[0][0] + 0.2, d.joints[0][1], -0.72], 0.82, 0.5]), // knuckles
 ];
