@@ -12,6 +12,9 @@ export interface NeedleInput {
   depth: number;
   gauge: 21 | 22 | 23;
   tourniquet: boolean;
+  /** How readily this patient's veins roll (0–1), and whether the skin is held taut to stop them. */
+  rolling?: number;
+  anchored?: boolean;
 }
 
 export type Outcome = "success" | "through" | "miss" | "artery" | "nerve";
@@ -94,7 +97,9 @@ export function evaluate(built: Built[], input: NeedleInput): SimResult {
   const steps = Math.max(2, Math.ceil(L / 0.02));
   const targets = built.filter((b) => b.def.layer === "veins" || b.def.layer === "arteries" || b.def.layer === "nerves");
   const track = new Map<string, { entered: boolean; tipInside: boolean; gap: number; near: Near }>();
-  const veinScale = input.tourniquet ? DILATION : 1;
+  // A vein that is free to roll offers the needle a much smaller target.
+  const rolled = !!input.rolling && !input.anchored;
+  const veinScale = (input.tourniquet ? DILATION : 1) * (rolled ? 1 - 0.5 * input.rolling! : 1);
   const tip: Vec3 = [input.entry[0] + dir[0] * L, input.entry[1] + dir[1] * L, input.entry[2] + dir[2] * L];
 
   for (let i = 0; i <= steps; i++) {
@@ -180,6 +185,7 @@ export function evaluate(built: Built[], input: NeedleInput): SimResult {
     else if (input.angle < lo) { score -= 8; notes.push({ tone: "warn", text: `Angle ${input.angle}° is very shallow; the bevel may enter the vein wall rather than the lumen. Aim for ${lo === 8 ? "10–15" : "15–30"}°.` }); }
     else notes.push({ tone: "good", text: `Insertion angle ${input.angle}° is within the recommended range.` });
 
+    if (dir[0] > 0.25) { score -= 15; notes.push({ tone: "warn", text: "The needle points toward the hand. Enter in the direction of venous flow, toward the heart." }); }
     const align = (Math.acos(Math.min(1, Math.abs(dot(dir, inVein.near.tan)))) * 180) / Math.PI;
     if (align - input.angle > 25) { score -= 12; notes.push({ tone: "warn", text: "The needle crosses the vein rather than following it. Line the needle up with the direction of the vein to avoid transfixing it." }); }
     if (inVein.near.d / inVein.near.r > 0.75) { score -= 6; notes.push({ tone: "warn", text: "The tip sits against the vein wall. Flow may be slow or stop — centre the bevel in the lumen." }); }
@@ -209,6 +215,7 @@ export function evaluate(built: Built[], input: NeedleInput): SimResult {
     if (Math.abs(dy) > 0.1) parts.push(`${mm(Math.abs(dy))} toward the ${dy > 0 ? "thumb (radial)" : "little-finger (ulnar)"} side`);
     notes.push({ tone: "bad", text: `No blood return. The nearest vein is the ${near.near.s.def.name.toLowerCase()}, ${mm(Math.max(n.d - n.r, 0))} from the needle tip${parts.length ? ` — it lies ${parts.join(" and ")}` : ""}.` });
   } else notes.push({ tone: "bad", text: "No blood return: there is no vein near this site." });
+  if (rolled && near && near.gap < 0.25) notes.push({ tone: "warn", text: "The vein rolled away from the needle. Anchor it: pull the skin taut 2.5–5 cm below the site with your thumb, then enter in one smooth motion." });
   notes.push({ tone: "warn", text: "Do not probe. You may pull back to just under the skin and redirect once; if that fails, remove the needle and select a new site." });
   if (closestHazard && closestHazard.gap < 0.4) notes.push({ tone: "warn", text: `The needle passed ${mm(Math.max(closestHazard.gap, 0))} from the ${closestHazard.near.s.def.name.toLowerCase()}.` });
   if (palmar) notes.push({ tone: "bad", text: "The palmar surface of the wrist and hand must never be used for venipuncture." });
@@ -218,6 +225,8 @@ export function evaluate(built: Built[], input: NeedleInput): SimResult {
 export interface Palpation {
   kind: "vein" | "artery" | "tendon" | "none";
   text: string;
+  /** Measurements, shown only at levels that give them. */
+  detail?: string;
   /** Where on the skin the finger is, and the surface normal there. */
   p?: Vec3;
   n?: Vec3;
@@ -260,11 +269,15 @@ export function palpate(built: Built[], p: Vec3, tourniquet: boolean): Palpation
     if (layer === "arteries" && (!artery || n.d < artery.d)) artery = n;
     if (s.def.id === "biceps" && n.r < 0.7) tendon = n;
   }
-  const reach = tourniquet ? 0.42 : 0.28;
-  if (vein && vein.d - vein.r < reach && vein.r > 0.085) {
+  const gap = vein ? vein.d - vein.r : Infinity;
+  if (vein && vein.r > 0.085 && gap < (tourniquet ? 1.0 : 0.28)) {
     const depth = Math.max(-skinSDF(...vein.pt) - vein.r, 0.05);
-    const feel = tourniquet ? "Soft, bouncy and resilient — springs back when pressed" : "Faintly bouncy — hard to define without a tourniquet";
-    return { kind: "vein", text: `${feel}. Vein ≈ ${mm(vein.r * 2)} wide, ≈ ${mm(depth)} under the skin.` };
+    const feel = !tourniquet
+      ? "Faintly bouncy — hard to define without a tourniquet."
+      : gap < 0.42
+        ? "Soft, bouncy and resilient — springs back when pressed."
+        : "Deep and faint: a soft fullness you only find with firm, slow pressure.";
+    return { kind: "vein", text: feel, detail: `Vein ≈ ${mm(vein.r * 2)} wide, ≈ ${mm(depth)} under the skin.` };
   }
   if (artery && artery.d < 1.35) return { kind: "artery", text: "Pulsatile beneath your finger — this is an artery. Do not puncture here." };
   if (tendon && tendon.d < 1.0) return { kind: "tendon", text: "Firm and cord-like with no bounce — tendon, not vein." };

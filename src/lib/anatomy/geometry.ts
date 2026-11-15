@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { DIGITS, FINGER_FLATTEN, keepInside, onDorsum, onLimb, projectToDepth, skinField, skinSDF, surfaceNets, type Field, type Vec3 } from "./skin";
+import { DIGITS, FINGER_FLATTEN, girth, keepInside, onDorsum, onLimb, projectToDepth, skinField, skinSDF, surfaceNets, type Field, type Vec3 } from "./skin";
 import { LAYER_COLOR, structuresFor, TENDON, type Part, type Pattern, type Pt, type Radius, type StructureDef } from "./structures";
 
 /** Centre-line of a tubular structure with its radius at every sample. */
@@ -8,6 +8,17 @@ export interface Path {
   pts: Vec3[];
   radii: number[];
 }
+
+/** What varies from one arm to the next. */
+export interface Body {
+  /** Soft-tissue build; 1 is average. */
+  girth: number;
+  /** Extra depth of the superficial veins, cm. */
+  veinDepth: number;
+  /** Vein calibre relative to average. */
+  calibre: number;
+}
+export const AVERAGE: Body = { girth: 1, veinDepth: 0, calibre: 1 };
 
 /** Largest factor by which a vein's radius grows under a tourniquet. */
 export const VEIN_SWELL = 1.28;
@@ -35,16 +46,16 @@ function radiusAt(r: Radius, t: number): number {
 }
 
 /** Turn control points into a densely sampled centre-line that hugs its tissue plane. */
-function resolve(pts: Pt[], centreMargin: (x: number) => number, perSpan = 18): Vec3[] {
+function resolve(pts: Pt[], centreMargin: (x: number) => number, perSpan = 18, deeper = 0): Vec3[] {
   const ctrl: THREE.Vector3[] = [];
   const depth: (number | null)[] = [];
   for (const pt of pts) {
     if ("s" in pt) {
       ctrl.push(new THREE.Vector3(...onLimb(pt.s[0], pt.s[1], pt.s[2])));
-      depth.push(pt.s[2]);
+      depth.push(pt.s[2] + deeper);
     } else if ("d" in pt) {
       ctrl.push(new THREE.Vector3(...onDorsum(pt.d[0], pt.d[1], pt.d[2])));
-      depth.push(pt.d[2]);
+      depth.push(pt.d[2] + deeper);
     } else {
       ctrl.push(new THREE.Vector3(...pt.p));
       depth.push(null);
@@ -175,7 +186,7 @@ function paint(g: THREE.BufferGeometry, def: StructureDef, tube: { radii: number
   g.setAttribute("color", new THREE.BufferAttribute(col, 3));
 }
 
-function buildPart(part: Part, def: StructureDef): { g: THREE.BufferGeometry; path?: Path } {
+function buildPart(part: Part, def: StructureDef, body: Body): { g: THREE.BufferGeometry; path?: Path } {
   const margin = MARGIN[def.layer];
   if (part.kind === "blob") {
     const g = new THREE.SphereGeometry(1, 40, 28);
@@ -189,12 +200,13 @@ function buildPart(part: Part, def: StructureDef): { g: THREE.BufferGeometry; pa
     }
     return { g };
   }
-  const pts = resolve(part.pts, margin);
+  const superficial = def.layer === "veins" && def.id !== "deep-veins";
+  const pts = resolve(part.pts, margin, 18, superficial ? body.veinDepth : 0);
   const radii = pts.map((_, i) => {
     const t = i / (pts.length - 1);
     let bulge = 0;
     for (const v of part.valves ?? []) bulge = Math.max(bulge, Math.exp(-(((t - v) / 0.018) ** 2)));
-    return radiusAt(part.r, t) * (1 + 0.18 * bulge);
+    return radiusAt(part.r, t) * (1 + 0.18 * bulge) * (superficial ? body.calibre : 1);
   });
   if (def.layer === "veins" || def.layer === "arteries") {
     // Vessel walls are never perfectly even.
@@ -329,10 +341,10 @@ export function unpack(p: Packed): THREE.BufferGeometry {
 }
 
 /** Build renderable geometry and centre-line paths for every structure in the chosen venous pattern. */
-export function buildStructures(pattern: Pattern): Built[] {
+export function buildStructures(pattern: Pattern, body: Body = AVERAGE): Built[] {
   return structuresFor(pattern).map((def) => {
     const bone = def.layer === "bones" ? buildBone(def) : null;
-    const built = bone ? [] : def.parts.map((p) => buildPart(p, def));
+    const built = bone ? [] : def.parts.map((p) => buildPart(p, def, body));
     const geometry = bone ? bone.geometry : mergeGeometries(built.map((b) => b.g), false)!;
     const paths = bone ? bone.paths : built.flatMap((b) => (b.path ? [b.path] : []));
     let anchor: Vec3;
@@ -387,10 +399,11 @@ export function buildNails(): THREE.BufferGeometry {
 }
 
 /** Iso-surface of the skin field `depth` cm beneath the surface. */
-const shellCache = new Map<number, THREE.BufferGeometry>();
+const shellCache = new Map<string, THREE.BufferGeometry>();
 
 export function buildShell(depth: number): THREE.BufferGeometry {
-  const hit = shellCache.get(depth);
+  const key = `${girth()}:${depth}`;
+  const hit = shellCache.get(key);
   if (hit) return hit;
   const m = surfaceNets(skinField(), -depth);
   const g = new THREE.BufferGeometry();
@@ -398,7 +411,7 @@ export function buildShell(depth: number): THREE.BufferGeometry {
   g.setAttribute("normal", new THREE.BufferAttribute(m.normals, 3));
   g.setIndex(new THREE.BufferAttribute(m.indices, 1));
   g.computeBoundingSphere();
-  shellCache.set(depth, g);
+  shellCache.set(key, g);
   return g;
 }
 

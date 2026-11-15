@@ -1,11 +1,13 @@
 import * as THREE from "three";
 import { useEffect, useState } from "react";
-import type { Reply } from "@/lib/anatomy/build.worker";
-import { unpack, type Built } from "@/lib/anatomy/geometry";
+import type { Reply, Request } from "@/lib/anatomy/build.worker";
+import { unpack, type Body, type Built } from "@/lib/anatomy/geometry";
+import { setGirth } from "@/lib/anatomy/skin";
 import { structuresFor, type Pattern } from "@/lib/anatomy/structures";
 
 export interface Anatomy {
   pattern: Pattern;
+  body: Body;
   skin: THREE.BufferGeometry;
   nails: THREE.BufferGeometry;
   fat: THREE.BufferGeometry | null;
@@ -13,39 +15,50 @@ export interface Anatomy {
   built: Built[];
 }
 
-// One worker and one copy of the pattern-independent meshes for the lifetime of the page.
+// One worker, and one copy of the meshes that depend only on the build of the arm.
 let worker: Worker | null = null;
-const base: { skin?: THREE.BufferGeometry; nails?: THREE.BufferGeometry; fat?: THREE.BufferGeometry; fascia?: THREE.BufferGeometry } = {};
+let requests = 0;
+const base: { girth?: number; skin?: THREE.BufferGeometry; nails?: THREE.BufferGeometry; fat?: THREE.BufferGeometry; fascia?: THREE.BufferGeometry } = {};
 
 /** Builds the limb in a background worker; returns null until the first mesh arrives. */
-export function useAnatomy(pattern: Pattern): Anatomy | null {
+export function useAnatomy(pattern: Pattern, body: Body): Anatomy | null {
   const [anatomy, setAnatomy] = useState<Anatomy | null>(null);
+  const { girth, veinDepth, calibre } = body;
 
   useEffect(() => {
     worker ??= new Worker(new URL("../../lib/anatomy/build.worker.ts", import.meta.url), { type: "module" });
     const w = worker;
+    const id = ++requests;
+    const wanted: Body = { girth, veinDepth, calibre };
     const onMessage = (e: MessageEvent<Reply>) => {
       const m = e.data;
       if (m.kind === "shells") {
+        if (m.girth !== base.girth) return;
         base.fat = unpack(m.fat);
         base.fascia = unpack(m.fascia);
         setAnatomy((a) => a && { ...a, fat: base.fat!, fascia: base.fascia! });
         return;
       }
       if (process.env.NODE_ENV !== "production") console.debug(`anatomy built in ${m.ms} ms`);
-      if (m.skin) base.skin = unpack(m.skin);
-      if (m.nails) base.nails = unpack(m.nails);
-      if (m.pattern !== pattern || !base.skin || !base.nails) return;
+      if (m.skin && m.nails) {
+        base.girth = m.girth;
+        base.skin = unpack(m.skin);
+        base.nails = unpack(m.nails);
+        base.fat = base.fascia = undefined;
+      }
+      if (m.id !== id || !base.skin || !base.nails) return;
+      // The page needs the same limb as the worker for palpation and the needle.
+      setGirth(m.girth);
       base.skin.setAttribute("aVein", new THREE.BufferAttribute(m.vein, 1));
       base.skin.setAttribute("aVeinGrad", new THREE.BufferAttribute(m.veinGrad, 3));
       const defs = structuresFor(pattern);
       const built = m.structures.map((s): Built => ({ def: defs.find((d) => d.id === s.id)!, geometry: unpack(s.geometry), paths: s.paths, anchor: s.anchor }));
-      setAnatomy({ pattern, skin: base.skin, nails: base.nails, fat: base.fat ?? null, fascia: base.fascia ?? null, built });
+      setAnatomy({ pattern, body: wanted, skin: base.skin, nails: base.nails, fat: base.fat ?? null, fascia: base.fascia ?? null, built });
     };
     w.addEventListener("message", onMessage);
-    w.postMessage({ pattern });
+    w.postMessage({ id, pattern, body: wanted } satisfies Request);
     return () => w.removeEventListener("message", onMessage);
-  }, [pattern]);
+  }, [pattern, girth, veinDepth, calibre]);
 
   return anatomy;
 }

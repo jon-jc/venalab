@@ -2,7 +2,8 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
-import { ControlPanel, DemoCaption, InfoPanel, ModeTabs, SimPanel } from "@/components/atlas/Panels";
+import { ControlPanel, DemoCaption, InfoPanel, ModeTabs } from "@/components/atlas/Panels";
+import { PracticePanel } from "@/components/atlas/PracticePanel";
 import { Labels } from "@/components/atlas/Labels";
 import { useAtlas, type Mode } from "@/components/atlas/store";
 
@@ -50,7 +51,7 @@ export default function AtlasPage() {
 
       <div className="absolute bottom-3 right-3 z-10 flex max-h-[46%] items-end lg:top-3 lg:max-h-none lg:items-start">
         {mode === "explore" && <InfoPanel />}
-        {mode === "sim" && <SimPanel />}
+        {mode === "sim" && <PracticePanel />}
       </div>
 
       <DemoCaption />

@@ -7,6 +7,7 @@ const s = () => useAtlas.getState();
 
 function restore() {
   s().set({ demo: null, palp: null, tourniquet: false, flow: false, selected: null });
+  s().setSim({ result: null, reveal: false, gauze: null });
   s().resetSim();
 }
 
@@ -40,7 +41,7 @@ export async function playDemo() {
     const [x, y, z] = plan.entry;
     const look = (dx: number, dy: number, dz: number) => s().set({ view: { id: "demo", n: s().view.n + 1, target: [x, y, z], position: [x + dx, y + dy, z + dz] } });
 
-    s().set({ mode: "sim", nir: false, tourniquet: false, palp: null });
+    s().set({ mode: "sim", procedure: "venous", nir: false, tourniquet: false, palp: null });
     s().resetSim();
 
     await step(0, "Identify the patient, explain the procedure, and support the arm straight with the palm up.", 3200, () => look(4, 1, 44));
@@ -53,15 +54,19 @@ export async function playDemo() {
       s().set({ palp: null });
       s().setSim({ reveal: true });
     });
-    await step(4, "Cleanse with 70% isopropyl alcohol and let it air-dry. Do not touch the site again.", 3400, () => s().setSim({ reveal: false }));
+    await step(4, "Cleanse with 70% isopropyl alcohol and let it air-dry. Do not touch the site again.", 3400, () => {
+      s().mark(plan.entry, plan.normal);
+      s().setSim({ reveal: false });
+      s().cleanse();
+    });
     await step(5, "Anchor the vein below the site. Bevel up, 15–30° to the skin, in line with the vein.", 4400, () => {
       look(7, -8, 15);
-      s().setSim({ entry: plan.entry, normal: plan.normal, angle: plan.angle, yaw: plan.yaw, depth: plan.depth, gauge: 21, phase: "aim", result: null });
+      s().setSim({ angle: plan.angle, yaw: plan.yaw, gauge: 21, anchor: true });
     });
-    await step(6, "Advance smoothly in one motion until you feel the ‘give’ and see the flash of blood.", 1400, () => s().advance());
+    await step(6, "Advance smoothly in one motion until you feel the ‘give’ and see the flash of blood.", 1400, () => s().advance(plan.depth));
     while (alive() && s().sim.phase !== "done") await wait(80);
     await step(7, "Blood flows into the tube. Release the tourniquet now, and fill tubes in the correct order of draw.", 5800, () => s().set({ tourniquet: false }));
-    await step(8, "Remove the last tube, withdraw the needle, activate the safety device, and apply pressure with gauze. Label the tubes at the bedside.", 4800, () => s().setSim({ phase: "withdraw" }));
+    await step(8, "Remove the last tube, withdraw the needle, activate the safety device, and apply pressure with gauze. Label the tubes at the bedside.", 4800, () => s().withdraw());
   } catch {
     return;
   }

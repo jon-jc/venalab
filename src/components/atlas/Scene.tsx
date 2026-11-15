@@ -11,6 +11,7 @@ import { onLimb, skinNormal, type Vec3 } from "@/lib/anatomy/skin";
 import { LAYER_COLOR, LAYER_ORDER, type LayerId } from "@/lib/anatomy/structures";
 import { heartbeat, live } from "./live";
 import { arteryMaterial, boneMaterial, fasciaMaterial, fatMaterial, muscleMaterial, nerveMaterial, skinMaterial, skinUniforms, veinMaterial } from "./materials";
+import { Fingerstick } from "./Fingerstick";
 import { effectiveLayers, labelEls, TONES, useAtlas, VIEWS, type Layers } from "./store";
 import { useAnatomy } from "./useAnatomy";
 
@@ -30,12 +31,11 @@ function Physiology() {
     live.vein.value += (target - live.vein.value) * (1 - Math.exp(-Math.min(dt, 0.05) * (tourniquet ? 1.1 : 2.2)));
     live.pulse = heartbeat(clock.elapsedTime);
     live.artery.value = 0.085 * live.pulse;
-    live.bulge.value = 0.03 + 0.42 * live.vein.value;
-
     // The skin gives under a palpating fingertip, and tents under the needle until it punctures.
     const s = useAtlas.getState();
+    live.bulge.value = (0.03 + 0.42 * live.vein.value) * s.patient.visibility;
     let want = 0;
-    if (s.mode === "sim" && s.sim.phase === "advancing" && s.sim.entry && live.needle < 3.5) {
+    if (s.mode === "sim" && s.procedure === "venous" && s.sim.entry && s.sim.phase !== "withdraw" && live.needle > -3 && live.needle < 3.5) {
       const e = s.sim.entry;
       live.press.value.set(e[0], e[1], e[2], 0.55);
       want = 0.2 * Math.min(Math.max((live.needle + 3) / 5, 0), 1);
@@ -227,7 +227,7 @@ function Tourniquet() {
 /** A fingertip on the skin: bounces over a vein, throbs with the pulse over an artery. */
 function PalpationRing() {
   const palp = useAtlas((s) => s.palp);
-  const active = useAtlas((s) => s.mode === "sim" && s.sim.phase === "aim");
+  const active = useAtlas((s) => s.mode === "sim" && s.procedure === "venous" && s.sim.phase === "aim" && s.sim.depth <= 0);
   const ref = useRef<THREE.Group>(null);
   useFrame(({ clock }) => {
     if (!ref.current || !palp?.p || !palp.n) return;
@@ -254,53 +254,125 @@ function PalpationRing() {
 }
 
 const GAUGE = { 21: { r: 0.041, hub: "#2f9e58" }, 22: { r: 0.036, hub: "#2a2d33" }, 23: { r: 0.032, hub: "#4da3ff" } };
-const HOVER_MM = -7;
+/** Distance (cm) from the puncture site to where the holder is gripped. */
+const GRIP = 7.5;
 
+/** A gauze pad left on the site once the needle is out. */
+function Gauze() {
+  const gauze = useAtlas((s) => s.sim.gauze);
+  const q = useMemo(() => (gauze ? new THREE.Quaternion().setFromUnitVectors(FRONT, new THREE.Vector3(...gauze.n)) : null), [gauze]);
+  if (!gauze || !q) return null;
+  const p = gauze.p, n = gauze.n;
+  return (
+    <mesh position={[p[0] + n[0] * 0.08, p[1] + n[1] * 0.08, p[2] + n[2] * 0.08]} quaternion={q} castShadow receiveShadow>
+      <boxGeometry args={[2.2, 2.2, 0.16, 6, 6, 1]} />
+      <meshStandardMaterial color="#f4f1ea" roughness={0.95} />
+    </mesh>
+  );
+}
+
+/**
+ * The needle, holder and tube, held in the hand. Drag it to tilt and aim about
+ * the puncture site; once it is in the skin, dragging slides it along its own
+ * axis. Scrolling over it, or the arrow keys, also advance and withdraw it.
+ */
 function Needle() {
   const sim = useAtlas((s) => s.sim);
+  const demo = useAtlas((s) => !!s.demo);
+  const controls = useThree((s) => s.controls) as OrbitControlsImpl | null;
   const group = useRef<THREE.Group>(null);
+  const tube = useRef<THREE.Group>(null);
   const blood = useRef<THREE.Mesh>(null);
+  const jet = useRef<THREE.Mesh>(null);
   const flash = useRef<THREE.MeshStandardMaterial>(null);
   const bruise = useRef<THREE.Mesh>(null);
-  const shown = useRef(HOVER_MM - 25);
+  const shown = useRef(-70);
   const fill = useRef(0);
+  const seat = useRef(0);
   const swell = useRef(0);
+  const drag = useRef<{ push: boolean; s0: number; d0: number } | null>(null);
+  const basis = useMemo(() => new THREE.Matrix4(), []);
 
   const dir = useMemo(() => (sim.normal ? needleDir(sim.normal, sim.angle, sim.yaw) : null), [sim.normal, sim.angle, sim.yaw]);
-  const outcome = sim.result?.outcome;
-  const arterial = outcome === "artery";
+  const state = sim.result ?? sim.live;
+  const arterial = state?.outcome === "artery";
+  const inVessel = state?.outcome === "success" || arterial;
+  const held = sim.phase === "aim" && !demo;
 
-  useFrame((_, dtRaw) => {
+  // A fresh site gets a fresh needle, brought in from above.
+  const site = sim.entry;
+  useEffect(() => {
+    shown.current = -70;
+    fill.current = 0;
+    seat.current = 0;
+    swell.current = 0;
+  }, [site]);
+
+  useEffect(() => {
+    if (!held || !sim.entry) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+      e.preventDefault();
+      const s = useAtlas.getState();
+      s.setDepth(s.sim.depth + (e.key === "ArrowUp" ? 0.5 : -0.5));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [held, sim.entry]);
+
+  useFrame(({ clock }, dtRaw) => {
     const dt = Math.min(dtRaw, 0.05);
     const s = useAtlas.getState();
-    if (!group.current || !sim.entry || !dir) return;
-    const goal = sim.phase === "aim" ? HOVER_MM : sim.phase === "withdraw" ? -45 : sim.depth;
-    const rate = sim.phase === "advancing" ? 11 : sim.phase === "withdraw" ? 55 : 90;
+    if (!group.current || !sim.entry || !sim.normal || !dir) return;
+    const goal = sim.phase === "withdraw" ? -70 : sim.depth;
+    const far = Math.abs(goal - shown.current);
+    // Slow and deliberate through the skin, quicker through the air.
+    const rate = sim.phase === "advancing" ? 11 : sim.phase === "withdraw" ? 60 : Math.max(22, far * 5);
     const step = rate * dt;
-    shown.current = Math.abs(goal - shown.current) <= step ? goal : shown.current + Math.sign(goal - shown.current) * step;
+    shown.current = far <= step ? goal : shown.current + Math.sign(goal - shown.current) * step;
     live.needle = shown.current;
     if (sim.phase === "advancing" && shown.current === goal) s.finish();
     if (sim.phase === "withdraw" && shown.current === goal) s.resetSim();
 
+    // Pose: the shaft lies along the direction of travel with the bevel facing away from the skin.
+    const back = new THREE.Vector3(-dir[0], -dir[1], -dir[2]);
+    const n = new THREE.Vector3(sim.normal[0], sim.normal[1], sim.normal[2]);
+    const up = n.addScaledVector(back, -n.dot(back)).normalize();
+    const side = new THREE.Vector3().crossVectors(back, up);
+    group.current.quaternion.setFromRotationMatrix(basis.makeBasis(side, back, up));
+    if (held && !drag.current) {
+      // Nobody's hand is perfectly still.
+      const t = clock.elapsedTime;
+      group.current.rotateX(0.004 * Math.sin(t * 6.3) + 0.002 * Math.sin(t * 13.1));
+      group.current.rotateZ(0.004 * Math.sin(t * 5.1 + 1.7));
+    }
     const L = shown.current / 10;
     group.current.position.set(sim.entry[0] + dir[0] * L, sim.entry[1] + dir[1] * L, sim.entry[2] + dir[2] * L);
-    group.current.quaternion.setFromUnitVectors(UP, new THREE.Vector3(-dir[0], -dir[1], -dir[2]));
 
-    // Blood return: a steady venous fill, a fast pulsing arterial one, or a brief flash if the vein was transfixed.
-    const want = sim.phase !== "done" ? (sim.phase === "withdraw" ? fill.current : 0) : outcome === "success" || arterial ? 1 : outcome === "through" ? 0.07 : 0;
-    const speed = arterial ? 0.25 + 0.9 * live.pulse : 0.2;
-    fill.current = want < fill.current ? want : Math.min(want, fill.current + speed * dt);
+    // The tube is pushed home once blood shows in the hub, then fills for as long as the tip stays in the vessel.
+    const flowing = inVessel && shown.current > 0 && sim.phase !== "withdraw";
+    seat.current += ((flowing || fill.current > 0.01 ? 1 : 0) - seat.current) * (1 - Math.exp(-dt * 5));
+    if (tube.current) tube.current.position.y = (1 - seat.current) * 3.4;
+    const filling = flowing && seat.current > 0.92;
+    if (filling) fill.current = Math.min(1, fill.current + (arterial ? 0.25 + 0.9 * live.pulse : 0.17) * dt);
+    else if (state?.outcome === "through" && shown.current > 0) fill.current = Math.max(fill.current, 0.05);
     if (blood.current) {
       const h = Math.max(fill.current * 6.4, 0.001);
-      blood.current.scale.y = h;
+      // The surface rocks a little while blood is running in.
+      blood.current.scale.set(1, h, 1);
       blood.current.position.y = 6.3 + h / 2;
+      blood.current.rotation.z = filling ? 0.03 * Math.sin(clock.elapsedTime * 9) : 0;
       blood.current.visible = fill.current > 0.002;
     }
-    if (flash.current) flash.current.emissiveIntensity = fill.current > 0 ? 0.5 : 0;
+    if (jet.current) {
+      jet.current.visible = filling && fill.current < 0.97;
+      jet.current.scale.x = jet.current.scale.z = arterial ? 1 + 1.4 * live.pulse : 1;
+    }
+    if (flash.current) flash.current.emissiveIntensity = (flowing || fill.current > 0 ? 0.55 : 0) * (arterial ? 0.7 + 0.6 * live.pulse : 1);
 
-    const bruising = sim.phase === "done" && (outcome === "through" || arterial);
-    swell.current = bruising ? Math.min(swell.current + dt / (arterial ? 3 : 6), 1) : 0;
-    if (bruise.current && sim.normal) {
+    const leak = sim.worst?.outcome === "through" || sim.worst?.outcome === "artery";
+    swell.current = leak ? Math.min(swell.current + dt / (sim.worst?.outcome === "artery" ? 3 : 6), 1) : 0;
+    if (bruise.current) {
       const k = swell.current;
       bruise.current.visible = k > 0.01;
       bruise.current.scale.set(1.5 * k, 1.5 * k, 0.16 * k);
@@ -308,63 +380,202 @@ function Needle() {
     }
   });
 
-  if (!sim.entry || !dir) return null;
+  if (!sim.entry || !sim.normal || !dir) return null;
+  const entry = sim.entry;
+  const normal = sim.normal;
   const g = GAUGE[sim.gauge];
   const r = g.r * 1.4;
   const bloodColor = arterial ? "#d21624" : "#5d0a15";
+
+  /** Where along the needle's own axis (cm past the site) the pointer ray passes closest. */
+  const alongAxis = (ray: THREE.Ray) => {
+    const d = new THREE.Vector3(dir[0], dir[1], dir[2]);
+    const w = new THREE.Vector3(entry[0] - OFFSET, entry[1], entry[2]).sub(ray.origin);
+    const b = d.dot(ray.direction);
+    const denom = 1 - b * b;
+    return denom < 1e-4 ? 0 : (b * ray.direction.dot(w) - d.dot(w)) / denom;
+  };
+  /** Swing the holder to follow the pointer, pivoting about the puncture site. */
+  const aimAt = (ray: THREE.Ray) => {
+    const centre = new THREE.Vector3(entry[0] - OFFSET, entry[1], entry[2]);
+    const hit = ray.intersectSphere(new THREE.Sphere(centre, GRIP), new THREE.Vector3()) ?? ray.closestPointToPoint(centre, new THREE.Vector3());
+    const back = hit.sub(centre).normalize();
+    const n = new THREE.Vector3(normal[0], normal[1], normal[2]);
+    const angle = THREE.MathUtils.clamp((Math.asin(THREE.MathUtils.clamp(back.dot(n), -1, 1)) * 180) / Math.PI, 3, 85);
+    const travel = back.clone().negate().addScaledVector(n, back.dot(n));
+    if (travel.lengthSq() < 1e-6) return;
+    travel.normalize();
+    // Same reference directions as the simulation: 0° points up the limb, toward the heart.
+    const t0 = new THREE.Vector3(-1 + n.x * n.x, n.x * n.y, n.x * n.z).normalize();
+    const c = new THREE.Vector3().crossVectors(n, t0);
+    const yaw = (Math.atan2(travel.dot(c), travel.dot(t0)) * 180) / Math.PI;
+    useAtlas.getState().aim({ angle: Math.round(angle), yaw: Math.round(yaw) });
+  };
+  const release = () => {
+    drag.current = null;
+    if (controls) controls.enabled = true;
+    document.body.style.cursor = "grab";
+  };
+
   return (
     <>
-      <mesh position={sim.entry} renderOrder={8}>
+      <mesh position={entry} renderOrder={8}>
         <sphereGeometry args={[0.07, 12, 12]} />
         <meshBasicMaterial color="#35e0c2" depthTest={false} transparent opacity={0.9} />
       </mesh>
-      <mesh ref={bruise} position={sim.entry} visible={false} renderOrder={8}>
+      <mesh ref={bruise} position={entry} visible={false} renderOrder={8}>
         <sphereGeometry args={[1, 24, 16]} />
         <meshStandardMaterial color="#4b1f3f" transparent opacity={0.62} roughness={0.8} depthWrite={false} />
       </mesh>
       <group ref={group}>
-        {/* bevelled tip and cannula */}
-        <mesh position={[0, 0.12, 0]}>
-          <cylinderGeometry args={[r, 0.004, 0.24, 12]} />
-          <meshStandardMaterial color="#e3e8ef" metalness={0.95} roughness={0.2} />
+        {/* invisible sleeve around the hub and holder: the part you take hold of */}
+        <mesh
+          position={[0, 8, 0]}
+          onPointerOver={(e) => {
+            if (!held) return;
+            e.stopPropagation();
+            if (controls) controls.enableZoom = false;
+            if (!drag.current) document.body.style.cursor = "grab";
+          }}
+          onPointerOut={() => {
+            if (controls) controls.enableZoom = true;
+            if (!drag.current) document.body.style.cursor = "";
+          }}
+          onPointerDown={(e) => {
+            if (!held) return;
+            e.stopPropagation();
+            (e.target as Element).setPointerCapture(e.pointerId);
+            if (controls) controls.enabled = false;
+            // In the air the needle pivots about the site; once in the skin it can only slide along itself.
+            drag.current = { push: e.shiftKey || sim.depth > 1.5, s0: alongAxis(e.ray), d0: sim.depth };
+            document.body.style.cursor = "grabbing";
+          }}
+          onPointerMove={(e) => {
+            const d = drag.current;
+            if (!d) return;
+            e.stopPropagation();
+            if (d.push) useAtlas.getState().setDepth(d.d0 + (alongAxis(e.ray) - d.s0) * 10);
+            else aimAt(e.ray);
+          }}
+          onPointerUp={(e) => {
+            (e.target as Element).releasePointerCapture(e.pointerId);
+            release();
+          }}
+          onWheel={(e) => {
+            if (!held) return;
+            e.stopPropagation();
+            const s = useAtlas.getState();
+            s.setDepth(s.sim.depth - Math.sign(e.deltaY) * 0.5);
+          }}
+        >
+          <cylinderGeometry args={[1.5, 1.1, 9.5, 16]} />
+          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
         </mesh>
-        <mesh position={[0, 2.02, 0]} castShadow>
-          <cylinderGeometry args={[r, r, 3.56, 12]} />
-          <meshStandardMaterial color="#e3e8ef" metalness={0.95} roughness={0.2} />
+
+        {/* cannula with a ground bevel: the point lies on the side nearest the skin, the opening faces up */}
+        <mesh position={[0, 0.16, 0]} geometry={BEVEL} scale={[r, 1, r]}>
+          <meshStandardMaterial color="#e6ebf2" metalness={0.95} roughness={0.18} />
         </mesh>
-        {/* colour-coded hub with flash chamber */}
-        <mesh position={[0, 4.55, 0]} castShadow>
-          <cylinderGeometry args={[0.3, 0.15, 1.5, 20]} />
-          <meshStandardMaterial ref={flash} color={g.hub} emissive={bloodColor} emissiveIntensity={0} roughness={0.45} />
+        <mesh position={[0, 2.06, 0]} castShadow>
+          <cylinderGeometry args={[r, r, 3.48, 16]} />
+          <meshStandardMaterial color="#e6ebf2" metalness={0.95} roughness={0.18} />
         </mesh>
-        {/* tube holder */}
+        {/* colour-coded hub; its flash chamber shows the first blood */}
+        <mesh position={[0, 4.0, 0]}>
+          <cylinderGeometry args={[0.13, 0.1, 0.42, 16]} />
+          <meshStandardMaterial color={g.hub} roughness={0.45} />
+        </mesh>
+        <mesh position={[0, 4.72, 0]} castShadow>
+          <cylinderGeometry args={[0.3, 0.16, 1.04, 24]} />
+          <meshPhysicalMaterial ref={flash} color={g.hub} emissive={bloodColor} emissiveIntensity={0} roughness={0.35} clearcoat={0.6} transparent opacity={0.92} />
+        </mesh>
+        {[0, 1, 2, 3].map((i) => (
+          <mesh key={i} position={[0, 4.72, 0]} rotation={[0, (i * Math.PI) / 2, 0]}>
+            <boxGeometry args={[0.7, 0.9, 0.05]} />
+            <meshStandardMaterial color={g.hub} roughness={0.45} />
+          </mesh>
+        ))}
+        {/* holder with its finger flange */}
         <mesh position={[0, 7.8, 0]}>
-          <cylinderGeometry args={[0.85, 0.85, 5, 32, 1, true]} />
-          <meshPhysicalMaterial color="#d9ecff" transparent opacity={0.22} roughness={0.08} side={THREE.DoubleSide} depthWrite={false} />
+          <cylinderGeometry args={[0.85, 0.85, 5, 40, 1, true]} />
+          <meshPhysicalMaterial color="#d9ecff" transparent opacity={0.22} roughness={0.06} side={THREE.DoubleSide} depthWrite={false} />
         </mesh>
         <mesh position={[0, 5.32, 0]}>
-          <cylinderGeometry args={[0.85, 0.32, 0.06, 32]} />
-          <meshStandardMaterial color="#cfe0f2" transparent opacity={0.5} />
+          <cylinderGeometry args={[0.85, 0.32, 0.08, 40]} />
+          <meshPhysicalMaterial color="#cfe0f2" transparent opacity={0.5} roughness={0.1} />
         </mesh>
-        {/* evacuated tube, its stopper, and the blood filling it */}
-        <mesh position={[0, 9.6, 0]}>
-          <cylinderGeometry args={[0.62, 0.62, 6.8, 28, 1, true]} />
-          <meshPhysicalMaterial color="#ffffff" transparent opacity={0.16} roughness={0.05} side={THREE.DoubleSide} depthWrite={false} />
+        <mesh position={[0, 10.3, 0]} scale={[1.9, 1, 1]} castShadow>
+          <cylinderGeometry args={[0.95, 0.95, 0.12, 40]} />
+          <meshPhysicalMaterial color="#cfe0f2" transparent opacity={0.55} roughness={0.1} />
         </mesh>
-        <mesh position={[0, 13.2, 0]}>
-          <sphereGeometry args={[0.62, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2]} />
-          <meshPhysicalMaterial color="#ffffff" transparent opacity={0.16} roughness={0.05} depthWrite={false} />
+        {/* inner needle in its rubber sleeve, which pierces the tube stopper */}
+        <mesh position={[0, 5.95, 0]}>
+          <cylinderGeometry args={[0.07, 0.09, 1.2, 12]} />
+          <meshStandardMaterial color="#7d8794" roughness={0.7} />
         </mesh>
-        <mesh position={[0, 5.95, 0]} castShadow>
-          <cylinderGeometry args={[0.7, 0.7, 0.7, 28]} />
-          <meshStandardMaterial color="#b79adf" roughness={0.6} />
-        </mesh>
-        <mesh ref={blood} visible={false}>
-          <cylinderGeometry args={[0.56, 0.56, 1, 24]} />
-          <meshStandardMaterial color={bloodColor} roughness={0.25} />
-        </mesh>
+        {/* evacuated tube: slides home when blood shows, then fills */}
+        <group ref={tube}>
+          <mesh position={[0, 9.6, 0]}>
+            <cylinderGeometry args={[0.62, 0.62, 6.8, 40, 1, true]} />
+            <meshPhysicalMaterial color="#ffffff" transparent opacity={0.16} roughness={0.04} side={THREE.DoubleSide} depthWrite={false} />
+          </mesh>
+          <mesh position={[0, 13.0, 0]}>
+            <sphereGeometry args={[0.62, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2]} />
+            <meshPhysicalMaterial color="#ffffff" transparent opacity={0.16} roughness={0.04} depthWrite={false} />
+          </mesh>
+          <mesh position={[0, 6.0, 0]} castShadow>
+            <cylinderGeometry args={[0.72, 0.72, 0.75, 32]} />
+            <meshStandardMaterial color="#b79adf" roughness={0.6} />
+          </mesh>
+          <mesh position={[0, 9.4, 0.615]} rotation={[0, 0, 0]}>
+            <planeGeometry args={[0.9, 3.4]} />
+            <meshStandardMaterial color="#f6f4ee" roughness={0.9} side={THREE.DoubleSide} />
+          </mesh>
+          <mesh ref={jet} position={[0, 9.5, 0]} visible={false}>
+            <cylinderGeometry args={[0.045, 0.045, 6.4, 8]} />
+            <meshStandardMaterial color={bloodColor} roughness={0.2} />
+          </mesh>
+          <mesh ref={blood} visible={false}>
+            <cylinderGeometry args={[0.56, 0.56, 1, 32]} />
+            <meshPhysicalMaterial color={bloodColor} roughness={0.15} clearcoat={0.8} />
+          </mesh>
+        </group>
       </group>
     </>
+  );
+}
+
+/** Needle point: a cone sheared so its tip sits at one side, like a ground bevel. Unit radius, 0.32 cm long. */
+const BEVEL = (() => {
+  const g = new THREE.ConeGeometry(1, 0.32, 20, 1, false);
+  g.rotateX(Math.PI);
+  const p = g.getAttribute("position");
+  for (let i = 0; i < p.count; i++) p.setZ(i, p.getZ(i) - (0.5 - p.getY(i) / 0.32));
+  g.computeVertexNormals();
+  return g;
+})();
+
+/** Alcohol on the skin: a wet sheen over the site that dries away in a few seconds. */
+function Swab() {
+  const site = useAtlas((s) => (s.procedure === "capillary" ? s.cap.site : s.sim.entry));
+  const normal = useAtlas((s) => (s.procedure === "capillary" ? s.cap.normal : s.sim.normal));
+  const at = useAtlas((s) => (s.procedure === "capillary" ? s.cap.cleansedAt : s.sim.cleansedAt));
+  const small = useAtlas((s) => s.procedure === "capillary");
+  const mesh = useRef<THREE.Mesh>(null);
+  const mat = useRef<THREE.MeshPhysicalMaterial>(null);
+  useFrame(() => {
+    if (!mesh.current || !mat.current) return;
+    const wet = at ? Math.max(0, 1 - (Date.now() - at) / 5000) : 0;
+    mesh.current.visible = wet > 0;
+    mat.current.opacity = 0.5 * wet;
+  });
+  if (!site || !normal || !at) return null;
+  const r = small ? 0.75 : 1.7;
+  return (
+    <mesh ref={mesh} position={site} quaternion={new THREE.Quaternion().setFromUnitVectors(FRONT, new THREE.Vector3(...normal))} scale={[r, r, r * 0.16]} renderOrder={7}>
+      <sphereGeometry args={[1, 32, 16]} />
+      <meshPhysicalMaterial ref={mat} color="#e4f4ff" transparent opacity={0.5} roughness={0.02} clearcoat={1} depthWrite={false} />
+    </mesh>
   );
 }
 
@@ -375,6 +586,7 @@ function Arm() {
   const nir = useAtlas((s) => s.nir);
   const clipX = useAtlas((s) => s.clip);
   const mode = useAtlas((s) => s.mode);
+  const procedure = useAtlas((s) => s.procedure);
   const flow = useAtlas((s) => s.flow);
   const reveal = useAtlas((s) => s.sim.reveal);
   const userLayers = useAtlas((s) => s.layers);
@@ -383,7 +595,9 @@ function Arm() {
   const layers = useAnimatedLayers(target, assemble);
 
   // Meshes are built in a background worker; nothing is drawn until the first arrives.
-  const anatomy = useAnatomy(pattern);
+  const patient = useAtlas((s) => s.patient);
+  const body = useMemo(() => ({ girth: patient.girth, veinDepth: patient.veinDepth, calibre: patient.calibre }), [patient]);
+  const anatomy = useAnatomy(pattern, body);
   const built = useMemo(() => anatomy?.built ?? [], [anatomy]);
   const shells = useMemo(() => ({ skin: anatomy?.skin ?? null, fat: anatomy?.fat ?? null, fascia: anatomy?.fascia ?? null }), [anatomy]);
   const shade = (anatomy?.skin.getAttribute("aVein")?.array as Float32Array | undefined) ?? null;
@@ -410,7 +624,7 @@ function Arm() {
     }
     const col = attr.array as Float32Array;
     const hue = nir ? [0.03, 0.1, 0.07] : [0.56, 0.74, 0.86];
-    const gain = nir ? 1.3 : 0.78 * TONES[tone].vis * (1 + 2.2 * swell);
+    const gain = nir ? 1.3 : 0.78 * TONES[tone].vis * patient.visibility * (1 + 2.2 * swell);
     for (let i = 0; i < shade.length; i++) {
       const w = Math.min(shade[i] * gain, 1);
       col[i * 3] = 1 + (hue[0] - 1) * w;
@@ -420,7 +634,7 @@ function Arm() {
     attr.needsUpdate = true;
     tinted.current = swell;
   };
-  useLayoutEffect(() => tint(live.vein.value), [shade, tone, nir, anatomy]); // eslint-disable-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => tint(live.vein.value), [shade, tone, nir, anatomy, patient]); // eslint-disable-line react-hooks/exhaustive-deps
   useFrame(() => {
     if (Math.abs(live.vein.value - tinted.current) > 0.004) tint(live.vein.value);
   });
@@ -446,9 +660,11 @@ function Arm() {
   const onSkinClick = (e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
     const s = useAtlas.getState();
-    if (mode !== "sim" || e.delta > 4 || s.demo || s.sim.phase !== "aim") return;
+    // A new site can be chosen while the needle is in the air, not once it is in the arm.
+    const busy = s.procedure === "venous" ? s.sim.phase !== "aim" || s.sim.depth > 0 : s.cap.phase !== "aim";
+    if (mode !== "sim" || e.delta > 4 || s.demo || busy) return;
     const p: Vec3 = [e.point.x + OFFSET, e.point.y, e.point.z];
-    s.setSim({ entry: p, normal: skinNormal(p[0], p[1], p[2]), result: null, reveal: false });
+    s.mark(p, skinNormal(p[0], p[1], p[2]));
   };
 
   const shellMaterial = (id: "fat" | "fascia") => (
@@ -536,8 +752,11 @@ function Arm() {
       )}
       {showFlow && layers.veins > 0 && <Flow built={built} layer="veins" />}
       {showFlow && layers.arteries > 0 && <Flow built={built} layer="arteries" />}
-      {tourniquet && <Tourniquet />}
-      {mode === "sim" && <Needle />}
+      {tourniquet && <Tourniquet key={anatomy.body.girth} />}
+      {mode === "sim" && procedure === "venous" && <Needle />}
+      {mode === "sim" && procedure === "venous" && <Gauze />}
+      {mode === "sim" && procedure === "capillary" && <Fingerstick />}
+      {mode === "sim" && <Swab />}
       <PalpationRing />
     </group>
   );

@@ -7,14 +7,22 @@ An interactive trainer for venous access in the arm and hand. It combines a laye
 ## What is in it
 
 ### Practice — `/atlas`
-A venipuncture simulator on a living arm.
+The site opens here. Two procedures can be practised on the same living arm.
 
-- **Palpate** with the pointer. The skin dimples under your fingertip; veins feel bouncy, arteries throb in time with the pulse, tendons feel like cords.
-- **Apply the tourniquet** and watch the veins fill and rise under the skin.
-- **Mark a site**, set the angle, direction, depth and needle gauge, then advance. The skin tents until the needle punctures.
-- **See what happened.** Blood return is animated — a steady venous fill, a fast pulsing arterial one, or a brief flash and a spreading haematoma when the vein is transfixed — followed by a scored debrief that names every structure the needle met or narrowly missed.
+**Venipuncture**
+- **Patients and difficulty.** Four levels, from Beginner to Expert, draw from nine kinds of arm: athletic, average, an M-shaped vein pattern, deep skin tone, higher body weight, dehydration, a slender older adult, obesity, and a frail elderly patient. The arm is re-modelled for each one — more tissue, deeper or smaller veins, veins that show less or roll more. Higher levels take away the X-ray, the measurements and the hints, and mark every step.
+- **Tourniquet**, with a running clock. The veins fill and rise under the skin; past a minute you lose marks.
+- **Palpate** with the pointer. The skin dimples under your fingertip; veins feel bouncy (deep ones only with firm pressure), arteries throb with the pulse, tendons feel like cords.
+- **Mark the site and cleanse it**, then let the alcohol dry.
+- **Hold the needle.** Drag the holder to tilt and aim it about the site; scroll, use the arrow keys, or drag once it is in the skin to advance and withdraw. Anchor the vein first if it is likely to roll.
+- **Watch for the flash.** Blood shows in the hub the moment the tip enters a vessel; the tube slides home and fills — steadily from a vein, in pulses from an artery. Go through the vein and the flash stops and a haematoma spreads.
+- **Debrief.** Every attempt is scored on what the needle met or narrowly missed and on the procedure around it: cleansing, tourniquet time, anchoring, needle choice, and releasing the tourniquet before withdrawing.
 - **Guided demonstration** of a textbook venipuncture, narrated step by step.
-- **New patient** randomises the vein pattern and skin tone. A running success rate tracks your attempts.
+
+**Fingerstick (capillary puncture)**
+- Choose the finger and the spot on its pad, the lancet depth and the direction of the blade
+- Warm the hand, cleanse, fire the lancet, wipe away the first drop, and collect with the right pressure into the right tube first
+- The debrief explains each choice: which fingers to use, why the side and the tip are avoided, why 2.0 mm is the limit, and why capillary tubes are filled in the reverse of the venous order
 
 ### Explore anatomy — `/atlas?mode=explore`
 - Eight tissue layers from skin to bone, each with its own opacity, plus dissection presets that peel away smoothly
