@@ -4,20 +4,18 @@ import { useGLTF } from "@react-three/drei";
 
 /**
  * The instruments — needle, hub, holder, tube, wipe, gauze, lancet,
- * microcollection tube and the collector's gloved hand — are modelled in Blender and
+ * microcollection tube and the gloved fingertip — are modelled in Blender and
  * shipped as one file. Only their shapes are used; materials are set in code so
  * that colour, transparency and blood can change as the procedure goes on.
  *
- * Every long instrument lies along +Y with its working end at the origin. The hand
- * rests its index fingertip at the origin of a surface whose normal is +Y, and
- * reaches back along +Z toward the collector.
+ * Every long instrument lies along +Y with its working end at the origin.
  */
 const URL = "/models/kit.glb";
 
 export type KitPart =
   | "Cannula" | "Hub" | "Sleeve" | "Holder" | "TubeGlass" | "Stopper" | "StopperRubber" | "Label"
   | "Wipe" | "Gauze" | "LancetBody" | "LancetGrip" | "LancetNozzle" | "LancetButton"
-  | "MicroTube" | "MicroCap" | "Hand" | "HandCuff";
+  | "MicroTube" | "MicroCap" | "Finger";
 
 export function useKit(): Record<KitPart, BufferGeometry> {
   const { nodes } = useGLTF(URL);

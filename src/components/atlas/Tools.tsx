@@ -36,7 +36,7 @@ function towardViewer(camera: THREE.Camera, at: THREE.Vector3, normal: THREE.Vec
 const FEEL = { vein: "#7fa2ff", artery: "#ff4d57", tendon: "#efe7d6", none: "#9aa7bb" };
 
 /**
- * The palpating hand: a gloved hand whose index finger follows the pointer over
+ * The palpating fingertip: a gloved index finger that follows the pointer over
  * the arm, pressing into the skin. It springs back over a vein and throbs with
  * the pulse over an artery, and what it feels is written beside it.
  */
@@ -66,8 +66,7 @@ export function Fingertip() {
     group.current.position.copy(at.current);
     const t = clock.elapsedTime;
     const press = palp.kind === "vein" ? 0.1 + 0.07 * Math.sin(t * 5) : palp.kind === "artery" ? 0.05 + 0.11 * live.pulse : 0.09 + 0.02 * Math.sin(t * 3);
-    // The modelled fingertip sits 4 mm clear of its origin; bring the pad down onto the skin and press.
-    finger.current.position.z = -0.3 - press;
+    finger.current.position.z = 0.42 - press;
     showHud(camera, size, at.current, palp.label ?? palp.text, "-420%");
   });
 
@@ -78,18 +77,11 @@ export function Fingertip() {
         <ringGeometry args={[0.62, 0.7, 48]} />
         <meshBasicMaterial color={FEEL[palp.kind]} transparent opacity={0.9} depthTest={false} side={THREE.DoubleSide} />
       </mesh>
-      {/* the hand reaches in from the collector's side, index finger on the skin */}
-      <group ref={finger}>
-        <group rotation={[0, 0, Math.PI]}>
-          <group rotation={[Math.PI / 2, 0, 0]}>
-            <mesh geometry={kit.Hand} castShadow>
-              <meshPhysicalMaterial color="#4f73d9" roughness={0.4} clearcoat={0.5} clearcoatRoughness={0.28} sheen={0.5} sheenColor="#c9d6ff" />
-            </mesh>
-            <mesh geometry={kit.HandCuff} castShadow>
-              <meshPhysicalMaterial color="#4467c9" roughness={0.45} clearcoat={0.4} />
-            </mesh>
-          </group>
-        </group>
+      {/* the finger rises from the skin and leans back toward the collector */}
+      <group ref={finger} rotation={[0.55, 0, 0]}>
+        <mesh geometry={kit.Finger} castShadow>
+          <meshPhysicalMaterial color="#5878d8" roughness={0.42} clearcoat={0.45} clearcoatRoughness={0.3} sheen={0.4} sheenColor="#c9d6ff" />
+        </mesh>
       </group>
     </group>
   );
