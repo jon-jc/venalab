@@ -434,7 +434,10 @@ export function PracticePanel() {
       <div className={`border-b border-white/10 px-4 py-3 ${demo ? "pointer-events-none opacity-40" : ""}`}>
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h3 className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">Patient</h3>
+            <h3 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-widest text-slate-400">
+              Patient
+              <span className="rounded-full border border-white/20 px-1.5 py-px text-[10px] font-medium normal-case tracking-normal text-slate-300">Synthetic</span>
+            </h3>
             <p className="mt-0.5 text-sm font-semibold text-white">{patient.title}</p>
           </div>
           <button className="chip shrink-0" onClick={newPatient}>
@@ -442,6 +445,7 @@ export function PracticePanel() {
           </button>
         </div>
         <p className="mt-1.5 text-[12px] leading-relaxed text-slate-300">{patient.brief}</p>
+        <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">An invented case for practice, not a real person. VenaLab holds no patient data.</p>
       </div>
 
       {procedure === "venous" ? <Venous /> : <Capillary />}

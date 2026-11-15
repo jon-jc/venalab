@@ -96,7 +96,7 @@ export function siteView(p: Vec3, n: Vec3, instrument: { angle: number; yaw: num
 
   // The clear part of the canvas, in pixels from its centre (x to the right, y upward).
   const W = typeof window === "undefined" ? 1440 : window.innerWidth;
-  const H = (typeof window === "undefined" ? 860 : window.innerHeight) - 56;
+  const H = (typeof window === "undefined" ? 860 : window.innerHeight) - 80;
   const clear = W >= WIDE_PX ? { x0: -W / 2 + 24, x1: W / 2 - PANEL_PX, y0: -H / 2 + 36, y1: H / 2 - 56 } : { x0: -W / 2 + 8, x1: W / 2 - 8, y0: H / 2 - H * 0.5, y1: H / 2 - 60 };
   // The camera's vertical field of view is 30°.
   const focal = H / (2 * Math.tan(Math.PI / 12));

@@ -192,7 +192,7 @@ export default function VeinFinder() {
         <div className="panel p-4">
           <h1 className="text-lg font-semibold">Photo vein finder</h1>
           <p className="mt-1 text-xs leading-relaxed text-slate-400">
-            Maps the veins visible in a photograph of an arm or hand and ranks candidate puncture sites. The image is analysed in your browser and never uploaded.
+            Maps the veins visible in a photograph of an arm or hand and ranks candidate puncture sites. The image is analysed in your browser and never uploaded or stored. Use your own arm or a consenting volunteer&apos;s — not a patient&apos;s.
           </p>
           <label
             onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
@@ -208,6 +208,7 @@ export default function VeinFinder() {
             <input type="file" accept="image/*" className="hidden" onChange={(e) => loadFile(e.target.files?.[0])} />
           </label>
           <p className="mb-1.5 mt-4 text-[11px] font-semibold uppercase tracking-widest text-slate-400">Or try a practice image</p>
+          <p className="-mt-0.5 mb-1.5 text-[11px] text-slate-500">Computer-generated drawings, not photographs of anyone.</p>
           <div className="flex flex-wrap gap-1.5">
             {SAMPLES.map((s) => (
               <button
@@ -254,7 +255,7 @@ export default function VeinFinder() {
       </aside>
 
       {/* ── Image ── */}
-      <section className="panel relative flex min-h-[420px] flex-col self-start overflow-hidden lg:sticky lg:top-[72px]">
+      <section className="panel relative flex min-h-[420px] flex-col self-start overflow-hidden lg:sticky lg:top-[96px]">
         <div className="flex items-center justify-between gap-2 border-b border-white/10 px-3 py-2">
           <div className="flex gap-1">
             {VIEWS.map(([id, label]) => (
@@ -356,7 +357,7 @@ export default function VeinFinder() {
             <li>Depth, valves, scarring or sclerosis</li>
             <li>Sizes are estimates scaled from a typical limb width</li>
           </ul>
-          <p className="mt-2 text-slate-400">A training aid, not a medical device. It has not been clinically validated and must not be the basis for a puncture on a patient.</p>
+          <p className="mt-2 text-slate-400">A training aid, not a medical device and not medical advice. It has not been clinically validated and must not be the basis for a puncture on a patient.</p>
         </div>
       </aside>
     </div>

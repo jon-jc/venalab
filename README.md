@@ -67,6 +67,13 @@ The teaching content is written from published standards and guidelines, and the
 
 The CLSI standards are sold rather than free to read; figures attributed to them are those taught from them, and should be checked against the current edition. Where sources differ, the stricter figure is used. VenaLab is not reviewed or endorsed by any of these organisations, and its content has not been reviewed by a clinician.
 
+## Data and privacy
+
+- **Every patient is synthetic.** The nine patients are invented descriptions of kinds of arm, written for teaching. None is, or is derived from, a real person or a real record, and the app says so beside each one.
+- **No patient data is used anywhere.** The arm is a generic model built from a CC0 body mesh and anatomical parameters. The practice images in the vein finder are drawn by code.
+- **Nothing is collected.** There are no accounts, no analytics and no uploads. A photo given to the vein finder is analysed in the browser tab and never leaves the device. Use your own arm or a consenting volunteer's, not a patient's.
+- **It is an educational tool, not medical advice.** That is stated on every page.
+
 ## How the model is built
 
 The surface of the arm and hand is taken from a MakeHuman body (CC0), posed in the anatomical position; everything beneath it is generated from anatomical parameters when the page opens. No textures are used. The instruments — needle, hub, holder, evacuated tube, alcohol wipe, gauze, safety lancet, microcollection tube and the gloved fingertip — are modelled in Blender and shipped as one small GLB file (`public/models/kit.glb`).
