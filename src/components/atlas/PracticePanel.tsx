@@ -290,7 +290,7 @@ function Capillary() {
         </div>
         <p className="mb-1.5 mt-2 text-[11px] text-slate-400">Puncture depth</p>
         <div className="flex flex-wrap gap-1.5">
-          {[1.0, 1.5, 2.0, 2.4].map((d) => (
+          {[1.0, 1.5, 2.2, 2.8].map((d) => (
             <Chip key={d} on={cap.lancet === d} onClick={() => setCap({ lancet: d })}>
               {d.toFixed(1)} mm
             </Chip>

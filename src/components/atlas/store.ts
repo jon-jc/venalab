@@ -224,7 +224,7 @@ interface AtlasState {
 }
 
 const freshSim = { entry: null, normal: null, angle: 25, yaw: 0, depth: HOVER_MM, phase: "aim" as Phase, stage: "tourniquet" as Stage, reveal: false, anchor: false, cleansedAt: null, puncturedAt: null, live: null, worst: null, result: null };
-const freshCap: CapState = { site: null, normal: null, wiping: false, step: 1, phase: "aim", lancet: 2.0, across: true, warmed: false, wiped: false, milking: false, edtaFirst: true, cleansedAt: null, puncturedAt: null, result: null };
+const freshCap: CapState = { site: null, normal: null, wiping: false, step: 1, phase: "aim", lancet: 2.2, across: true, warmed: false, wiped: false, milking: false, edtaFirst: true, cleansedAt: null, puncturedAt: null, result: null };
 const SEVERITY = { artery: 3, nerve: 2, through: 1 } as Record<string, number>;
 
 export const useAtlas = create<AtlasState>((set, get) => {

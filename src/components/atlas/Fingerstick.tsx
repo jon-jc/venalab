@@ -81,7 +81,7 @@ export function Fingerstick() {
       device.current.position.z = lift;
       device.current.visible = cap.step >= 4 && lift < 9;
     }
-    const flow = (cap.warmed ? 1 : 0.5) * Math.min(cap.lancet / 2, 1.15);
+    const flow = (cap.warmed ? 1 : 0.5) * Math.min(cap.lancet / 2.2, 1.15);
     const size0 = since > 0.3 ? Math.min(0.26, 0.085 * flow * ((performance.now() - welling.current) / 1000)) : 0;
     if (drop.current) {
       drop.current.visible = size0 > 0.012;
