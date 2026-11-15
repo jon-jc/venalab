@@ -161,6 +161,8 @@ interface Cone {
 }
 
 const BLEND = 0.55;
+/** Ratio of finger width to finger thickness. */
+export const FINGER_FLATTEN = 1.12;
 
 const DIGIT_CONES: Cone[][] = DIGITS.map((d) =>
   d.joints.slice(0, -1).map((a, i) => {
@@ -233,7 +235,9 @@ export function skinSDF(x: number, y: number, z: number): number {
     let dd = 1e9;
     for (const c of cones) {
       if (x < c.min[0] || x > c.max[0] || y < c.min[1] || y > c.max[1] || z < c.min[2] || z > c.max[2]) continue;
-      dd = smin(dd, roundCone(c, x, y, z), 0.25);
+      // Fingers are a little wider than they are thick; the thumb (first digit) stays round.
+      const zc = (c.az + c.bz) / 2;
+      dd = smin(dd, roundCone(c, x, y, cones === DIGIT_CONES[0] ? z : zc + (z - zc) * FINGER_FLATTEN), 0.25);
     }
     if (dd < digits) digits = dd;
   }
@@ -310,7 +314,7 @@ export interface Field {
 let cachedField: Field | null = null;
 
 /** Sample the skin field on a regular grid (computed once). */
-export function skinField(h = 0.2): Field {
+export function skinField(h = 0.16): Field {
   if (cachedField && cachedField.h === h) return cachedField;
   const origin: Vec3 = [-19, -6.4, -6.2];
   const dims: [number, number, number] = [

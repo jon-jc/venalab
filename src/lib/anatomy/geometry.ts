@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { keepInside, onDorsum, onLimb, projectToDepth, skinField, skinSDF, surfaceNets, type Vec3 } from "./skin";
+import { DIGITS, FINGER_FLATTEN, keepInside, onDorsum, onLimb, projectToDepth, skinField, skinSDF, surfaceNets, type Vec3 } from "./skin";
 import { LAYER_COLOR, structuresFor, TENDON, type Part, type Pattern, type Pt, type Radius, type StructureDef } from "./structures";
 
 /** Centre-line of a tubular structure with its radius at every sample. */
@@ -73,6 +73,7 @@ function tubeGeometry(pts: Vec3[], radii: number[], flat: number, radial: number
   const n = pts.length;
   const pos = new Float32Array((n * radial + 2) * 3);
   const rad = new Float32Array(n * radial + 2);
+  const fib = new Float32Array((n * radial + 2) * 2);
   const idx: number[] = [];
   const T = new THREE.Vector3();
   const N = new THREE.Vector3();
@@ -97,6 +98,8 @@ function tubeGeometry(pts: Vec3[], radii: number[], flat: number, radial: number
       const c = Math.cos(phi) * ra;
       const s = Math.sin(phi) * rb;
       rad[i * radial + j] = ra;
+      fib[(i * radial + j) * 2] = i / (n - 1);
+      fib[(i * radial + j) * 2 + 1] = phi;
       const o = (i * radial + j) * 3;
       pos[o] = p[0] + B.x * c + N.x * s;
       pos[o + 1] = p[1] + B.y * c + N.y * s;
@@ -124,6 +127,7 @@ function tubeGeometry(pts: Vec3[], radii: number[], flat: number, radial: number
   const g = new THREE.BufferGeometry();
   g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
   g.setAttribute("aRadius", new THREE.BufferAttribute(rad, 1));
+  g.setAttribute("aFiber", new THREE.BufferAttribute(fib, 2));
   g.setIndex(idx);
   return g;
 }
@@ -179,7 +183,10 @@ function buildPart(part: Part, def: StructureDef): { g: THREE.BufferGeometry; pa
     g.scale(part.r[0], part.r[1], part.r[2]);
     g.translate(part.c[0], part.c[1], part.c[2]);
     constrain(g, margin);
-    if (def.layer === "muscles") paint(g, def, null);
+    if (def.layer === "muscles") {
+      paint(g, def, null);
+      g.setAttribute("aFiber", new THREE.BufferAttribute(new Float32Array(g.getAttribute("position").count * 2), 2));
+    }
     return { g };
   }
   const pts = resolve(part.pts, margin);
@@ -200,6 +207,7 @@ function buildPart(part: Part, def: StructureDef): { g: THREE.BufferGeometry; pa
   const g = tubeGeometry(pts, radii, part.flat ?? 1, radial);
   constrain(g, margin);
   if (def.layer !== "veins" && def.layer !== "arteries") g.deleteAttribute("aRadius");
+  if (def.layer !== "muscles") g.deleteAttribute("aFiber");
   if (def.layer === "muscles") paint(g, def, { radii, radial });
   return { g, path: { pts, radii } };
 }
@@ -220,6 +228,30 @@ export function buildStructures(pattern: Pattern): Built[] {
     }
     return { def, geometry, paths, anchor };
   });
+}
+
+/** Fingernails: thin plates set into the back of each fingertip. */
+export function buildNails(): THREE.BufferGeometry {
+  const parts = DIGITS.map((d, i) => {
+    const a = new THREE.Vector3(...d.joints[2]);
+    const b = new THREE.Vector3(...d.joints[3]);
+    const axis = b.clone().sub(a);
+    const len = axis.length();
+    axis.normalize();
+    const back = new THREE.Vector3(0, 0, -1).addScaledVector(axis, axis.z).normalize();
+    const side = new THREE.Vector3().crossVectors(back, axis);
+    const r = d.radii[2] + (d.radii[3] - d.radii[2]) * 0.6;
+    const thick = r * 0.32;
+    const surface = i === 0 ? r : r / FINGER_FLATTEN;
+    const g = new THREE.SphereGeometry(1, 24, 14);
+    g.deleteAttribute("uv");
+    g.scale(len * 0.42 + 0.12, r * 0.74, thick);
+    g.applyMatrix4(new THREE.Matrix4().makeBasis(axis, side, back));
+    const c = a.addScaledVector(axis, len * 0.62).addScaledVector(back, surface - thick + 0.035);
+    g.translate(c.x, c.y, c.z);
+    return g;
+  });
+  return mergeGeometries(parts, false)!;
 }
 
 /** Iso-surface of the skin field `depth` cm beneath the surface. */
