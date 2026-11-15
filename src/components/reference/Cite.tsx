@@ -10,7 +10,7 @@ export function Cite({ ids, className = "" }: { ids: SourceId[]; className?: str
         return (
           <span key={id}>
             {i > 0 && " · "}
-            <a href={s.url} target="_blank" rel="noopener noreferrer" title={`${s.org}. ${s.title}. ${s.edition}`} className="underline decoration-white/25 underline-offset-2 hover:text-slate-200">
+            <a href={s.url} target="_blank" rel="noopener noreferrer" title={`${s.org}. ${s.title}. ${s.edition}`} className="tap underline decoration-white/25 underline-offset-2 hover:text-slate-200">
               {s.short}
             </a>
           </span>
