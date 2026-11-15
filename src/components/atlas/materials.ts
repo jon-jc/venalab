@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { DIGITS } from "@/lib/anatomy/skin";
+import { DIGITS, fit } from "@/lib/anatomy/skin";
 import { live } from "./live";
 
 /**
@@ -94,23 +94,27 @@ for (const d of DIGITS) {
     CREASES.push({ at: new THREE.Vector4(...d.joints[k], d.radii[k] * 1.6), dir: new THREE.Vector4(dir.x, dir.y, dir.z, 0) });
   }
 }
-for (const d of DIGITS.slice(1)) CREASES.push({ at: new THREE.Vector4(d.joints[0][0] + 0.2, d.joints[0][1], -0.9, 1.15), dir: new THREE.Vector4(1, 0, 0, -1) });
-CREASES.push({ at: new THREE.Vector4(26.3, 0, 0.8, 3.7), dir: new THREE.Vector4(1, 0, 0, 1) }); // wrist
-CREASES.push({ at: new THREE.Vector4(0.2, 0.2, 3.2, 3.1), dir: new THREE.Vector4(1, 0, 0, 1) }); // elbow
+for (const d of DIGITS.slice(1)) CREASES.push({ at: new THREE.Vector4(...d.knuckle, 1.15), dir: new THREE.Vector4(1, 0, 0, -1) });
+CREASES.push({ at: new THREE.Vector4(...fit([26.3, 0, 0.8]), 3.7), dir: new THREE.Vector4(1, 0, 0, 1) }); // wrist
+CREASES.push({ at: new THREE.Vector4(...fit([0.2, 0.2, 3.2]), 3.1), dir: new THREE.Vector4(1, 0, 0, 1) }); // elbow
 
 /** The three main palmar creases as line segments in the plane of the palm: (x, y) → (x, y). */
 const PALM_LINES = [
   [35.0, -3.9, 34.55, -1.0], [34.55, -1.0, 35.35, 1.7], // distal transverse crease
   [34.2, 3.6, 33.0, 0.5], [33.0, 0.5, 31.6, -2.8], // proximal transverse crease
   [34.0, 3.5, 31.2, 1.6], [31.2, 1.6, 28.0, 1.0], // thenar crease
-].map((l) => new THREE.Vector4(...l));
+].map((l) => {
+  const a = fit([l[0], l[1], 0]);
+  const b = fit([l[2], l[3], 0]);
+  return new THREE.Vector4(a[0], a[1], b[0], b[1]);
+});
 
 /** Where blood shows through thin skin and the surface looks pinker: centre and radius. */
 const BLUSH = [
   ...DIGITS.map((d) => new THREE.Vector4(...d.joints[3], 1.25)),
-  ...DIGITS.map((d) => new THREE.Vector4(d.joints[1][0], d.joints[1][1], d.joints[1][2] - d.radii[1] * 0.7, 0.85)),
-  ...DIGITS.slice(1).map((d) => new THREE.Vector4(d.joints[0][0] + 0.2, d.joints[0][1], -1.0, 1.0)),
-  new THREE.Vector4(-1.6, -0.7, -3.5, 2.4),
+  ...DIGITS.map((d) => new THREE.Vector4(d.joints[1][0] + d.back[0] * d.radii[1] * 0.7, d.joints[1][1] + d.back[1] * d.radii[1] * 0.7, d.joints[1][2] + d.back[2] * d.radii[1] * 0.7, 0.85)),
+  ...DIGITS.slice(1).map((d) => new THREE.Vector4(...d.knuckle, 1.0)),
+  new THREE.Vector4(...fit([-1.6, -0.7, -3.5]), 2.4),
 ];
 
 export const skinUniforms = {

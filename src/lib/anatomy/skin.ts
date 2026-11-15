@@ -1,23 +1,132 @@
 /**
- * Implicit model of the left upper limb in anatomical position (forearm supinated).
+ * The skin of the left upper limb in anatomical position (forearm supinated).
  *
  * Units are centimetres.
  *   x  proximal (−) → distal (+); the elbow flexion crease is x = 0
  *   y  radial / lateral (+) → ulnar / medial (−)
  *   z  anterior / palmar (+) → posterior / dorsal (−)
  *
- * The skin is a signed distance field. The arm and palm are a loft of
- * cross-sections measured at stations along the limb; each section has its own
- * extent in the four anatomical directions, so the biceps, triceps and forearm
- * muscle masses bulge where they should. Digits are chains of round cones, and
- * bony points, tendons and hollows are blended in on top. Deeper tissue planes
- * are iso-surfaces of the same field, so every layer follows the skin.
+ * The shape is a modelled human arm and hand, held as a signed distance field
+ * sampled on a regular grid. Deeper tissue planes are iso-surfaces of the same
+ * field, so every layer follows the skin.
+ *
+ * The anatomy in structures.ts is laid out on a simpler reference limb, a loft
+ * of measured cross-sections. `fit` carries a point of that layout onto this
+ * limb, so the layout does not depend on the exact shape of the arm.
  */
 
-export type Vec3 = [number, number, number];
+import { DIGITS, SECTIONS, WRIST, type Digit, type Vec3 } from "./limb";
+
+export { DIGITS };
+export type { Digit, Vec3 };
+
+/** The limb is shown from the middle of the upper arm. */
+export const X_PROXIMAL = -21;
+
+// ───────────────────────── The distance field ─────────────────────────
+
+interface Grid {
+  data: Int16Array;
+  nx: number;
+  ny: number;
+  nz: number;
+  ox: number;
+  oy: number;
+  oz: number;
+  h: number;
+  /** Centimetres per stored step. */
+  unit: number;
+}
+
+const SOURCE = "/models/limb.bin.gz";
+let grid: Grid | null = null;
+let pending: Promise<void> | null = null;
+
+/** Fetch the distance field. Nothing here gives a meaningful answer until this has resolved. */
+export function loadLimb(): Promise<void> {
+  pending ??= (async () => {
+    let buf = await (await fetch(SOURCE)).arrayBuffer();
+    // Some hosts unpack the file on the way; others hand over the gzip stream as it is.
+    const magic = new Uint8Array(buf, 0, 2);
+    if (magic[0] === 0x1f && magic[1] === 0x8b) buf = await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer();
+    const v = new DataView(buf);
+    if (v.getUint32(0, true) !== 0x424d4c56) throw new Error("Unrecognised limb file");
+    const [nx, ny, nz] = [v.getUint32(4, true), v.getUint32(8, true), v.getUint32(12, true)];
+    grid = {
+      data: new Int16Array(buf, 36, nx * ny * nz),
+      nx, ny, nz,
+      ox: v.getFloat32(16, true),
+      oy: v.getFloat32(20, true),
+      oz: v.getFloat32(24, true),
+      h: v.getFloat32(28, true),
+      unit: v.getFloat32(32, true),
+    };
+    cachedField = null;
+  })();
+  return pending;
+}
+
+/** Trilinear sample of the stored field. */
+function sample(x: number, y: number, z: number): number {
+  const g = grid!;
+  let fx = (x - g.ox) / g.h;
+  let fy = (y - g.oy) / g.h;
+  let fz = (z - g.oz) / g.h;
+  // Beyond the grid the nearest stored value is carried outward. Above its
+  // proximal face the arm simply continues as it was.
+  let out = 0;
+  if (fx < 0) fx = 0;
+  else if (fx > g.nx - 1) { out += (fx - g.nx + 1) ** 2; fx = g.nx - 1; }
+  if (fy < 0) { out += fy * fy; fy = 0; }
+  else if (fy > g.ny - 1) { out += (fy - g.ny + 1) ** 2; fy = g.ny - 1; }
+  if (fz < 0) { out += fz * fz; fz = 0; }
+  else if (fz > g.nz - 1) { out += (fz - g.nz + 1) ** 2; fz = g.nz - 1; }
+  const i = Math.min(fx | 0, g.nx - 2);
+  const j = Math.min(fy | 0, g.ny - 2);
+  const k = Math.min(fz | 0, g.nz - 2);
+  const tx = fx - i;
+  const ty = fy - j;
+  const tz = fz - k;
+  const d = g.data;
+  const sy = g.nx;
+  const sz = g.nx * g.ny;
+  const a = i + sy * j + sz * k;
+  const c00 = d[a] + (d[a + 1] - d[a]) * tx;
+  const c10 = d[a + sy] + (d[a + sy + 1] - d[a + sy]) * tx;
+  const c01 = d[a + sz] + (d[a + sz + 1] - d[a + sz]) * tx;
+  const c11 = d[a + sz + sy] + (d[a + sz + sy + 1] - d[a + sz + sy]) * tx;
+  const c0 = c00 + (c10 - c00) * ty;
+  const c1 = c01 + (c11 - c01) * ty;
+  const v = (c0 + (c1 - c0) * tz) * g.unit;
+  return out > 0 ? Math.max(v, 0) + Math.sqrt(out) * g.h : v;
+}
+
+// ───────────────────────── Cross-sections ─────────────────────────
+
+const S0 = SECTIONS[0][0];
+/** x of the last section that has a width (the wrist). */
+const S_WRIST = SECTIONS.findIndex((s) => s[3] === 0) - 1 + S0;
+
+/** Section of this limb at x, for an average build: centre y, centre z, half-width, half-depth. */
+let secY = 0;
+let secZ = 0;
+let secW = 1;
+let secD = 1;
+
+function section(x: number) {
+  const at = (f: number, c: 1 | 2 | 3 | 4) => {
+    const g = Math.min(Math.max(f - S0, 0), SECTIONS.length - 1);
+    const i = Math.min(g | 0, SECTIONS.length - 2);
+    return SECTIONS[i][c] + (SECTIONS[i + 1][c] - SECTIONS[i][c]) * (g - i);
+  };
+  secY = at(x, 1);
+  secZ = at(x, 2);
+  secW = at(Math.min(x, S_WRIST), 3);
+  secD = at(x, 4);
+}
 
 /**
- * Cross-sections of an average adult limb:
+ * The reference limb the anatomy is laid out on:
  * [x, radial, ulnar, anterior, posterior extent, squareness].
  * Squareness 2 is an ellipse; higher values approach a rounded rectangle (the palm).
  */
@@ -45,9 +154,6 @@ const KEYS: ReadonlyArray<readonly [number, number, number, number, number, numb
   [36.6, 3.8, 3.5, 0.95, 0.8, 2.6], // the palm thins into the roots of the fingers
 ];
 
-export const X_PROXIMAL = KEYS[0][0];
-const X_PALM_END = KEYS[KEYS.length - 1][0];
-
 const SLOPES = KEYS.map((_, i) => {
   const p = KEYS[Math.max(i - 1, 0)];
   const n = KEYS[Math.min(i + 1, KEYS.length - 1)];
@@ -55,15 +161,14 @@ const SLOPES = KEYS.map((_, i) => {
   return [1, 2, 3, 4, 5].map((c) => (n[c] - p[c]) / dx);
 });
 
-/** Section at x: [radial, ulnar, anterior, posterior, squareness], cached for the last x queried. */
-const section = [1, 1, 1, 1, 2];
-let cachedField: Field | null = null;
-let sectionX = NaN;
+/** Section of the reference limb at x: [radial, ulnar, anterior, posterior, squareness]. */
+const ref = [1, 1, 1, 1, 2];
+let refX = NaN;
 
-function loadSection(x: number) {
-  if (x === sectionX) return;
-  sectionX = x;
-  const xc = Math.min(Math.max(x, X_PROXIMAL), X_PALM_END);
+function reference(x: number) {
+  if (x === refX) return;
+  refX = x;
+  const xc = Math.min(Math.max(x, KEYS[0][0]), KEYS[KEYS.length - 1][0]);
   let i = 0;
   while (i < KEYS.length - 2 && xc > KEYS[i + 1][0]) i++;
   const k0 = KEYS[i];
@@ -76,10 +181,55 @@ function loadSection(x: number) {
   const h10 = (t3 - 2 * t2 + t) * h;
   const h01 = -2 * t3 + 3 * t2;
   const h11 = (t3 - t2) * h;
-  for (let c = 0; c < 5; c++) section[c] = h00 * k0[c + 1] + h10 * SLOPES[i][c] + h01 * k1[c + 1] + h11 * SLOPES[i + 1][c];
-  const f = bulk(xc);
-  for (let c = 0; c < 4; c++) section[c] *= f;
+  for (let c = 0; c < 5; c++) ref[c] = h00 * k0[c + 1] + h10 * SLOPES[i][c] + h01 * k1[c + 1] + h11 * SLOPES[i + 1][c];
 }
+
+/** The reference hand: wrist crease, and the knuckles of the index and little fingers. */
+const REF_WRIST = 26;
+const REF_KNUCKLE_X = (34.6 + 35.0 + 34.5 + 33.5) / 4;
+const REF_INDEX_Y = 3.0;
+const REF_LITTLE_Y = -2.75;
+
+const HAND_X = WRIST[0] - 0.4;
+const HAND_KX = (DIGITS.slice(1).reduce((s, d) => s + d.joints[0][0], 0) / 4 - HAND_X) / (REF_KNUCKLE_X - REF_WRIST);
+const HAND_KY = (DIGITS[1].joints[0][1] - DIGITS[4].joints[0][1]) / (REF_INDEX_Y - REF_LITTLE_Y);
+const HAND_Y = (DIGITS[1].joints[0][1] + DIGITS[4].joints[0][1]) / 2;
+const REF_HAND_Y = (REF_INDEX_Y + REF_LITTLE_Y) / 2;
+
+const smoothstep = (a: number, b: number, v: number) => {
+  const t = Math.min(Math.max((v - a) / (b - a), 0), 1);
+  return t * t * (3 - 2 * t);
+};
+
+/**
+ * Carry a point laid out on the reference limb onto this one. Along the arm
+ * each cross-section is stretched to fit; in the hand the palm is, from the
+ * wrist to the knuckles and from the index to the little finger.
+ */
+export function fit(p: Vec3): Vec3 {
+  const x = p[0];
+  reference(x);
+  const refY = (ref[0] - ref[1]) / 2;
+  const refW = (ref[0] + ref[1]) / 2;
+  const refZ = (ref[2] - ref[3]) / 2;
+  const refD = (ref[2] + ref[3]) / 2;
+  const hand = smoothstep(24, 28, x);
+  let ay = 0;
+  let az = 0;
+  if (hand < 1) {
+    section(x);
+    ay = secY + (p[1] - refY) * (secW / refW);
+    az = secZ + (p[2] - refZ) * (secD / refD);
+    if (hand === 0) return [x, ay, az];
+  }
+  const hx = HAND_X + (x - REF_WRIST) * HAND_KX;
+  section(hx);
+  const hy = HAND_Y + (p[1] - REF_HAND_Y) * HAND_KY;
+  const hz = secZ + (p[2] - refZ) * (secD / refD);
+  return [x + (hx - x) * hand, ay + (hy - ay) * hand, az + (hz - az) * hand];
+}
+
+// ───────────────────────── The skin ─────────────────────────
 
 let GIRTH = 1;
 
@@ -92,242 +242,35 @@ function bulk(x: number): number {
 /** The build the limb is currently modelled with; 1 is average. */
 export const girth = () => GIRTH;
 
+/** Change the soft-tissue build of the arm. Everything derived from the field must be rebuilt afterwards. */
+export function setGirth(g: number) {
+  if (g === GIRTH) return;
+  GIRTH = g;
+  cachedField = null;
+}
+
 function smin(a: number, b: number, k: number): number {
   const h = Math.max(k - Math.abs(a - b), 0) / k;
   return Math.min(a, b) - h * h * k * 0.25;
 }
 
-function armSDF(x: number, y: number, z: number): number {
-  loadSection(x);
-  const a = y >= 0 ? section[0] : section[1];
-  const b = z >= 0 ? section[2] : section[3];
-  const n = section[4];
-  const ay = Math.abs(y) / a;
-  const az = Math.abs(z) / b;
-  let k: number;
-  let g: number;
-  if (n < 2.001) {
-    k = Math.sqrt(ay * ay + az * az);
-    g = k > 1e-6 ? Math.hypot(y / (a * a), z / (b * b)) / k : 1 / Math.min(a, b);
-  } else {
-    const s = Math.pow(ay, n) + Math.pow(az, n);
-    k = Math.pow(s, 1 / n);
-    if (k > 1e-6) {
-      const kk = Math.pow(k, 1 - n);
-      g = Math.hypot((kk * Math.pow(ay, n - 1)) / a, (kk * Math.pow(az, n - 1)) / b);
-    } else {
-      g = 1 / Math.min(a, b);
-    }
+/** Signed distance (cm) to the skin surface: negative inside the limb. */
+export function skinSDF(x: number, y: number, z: number): number {
+  if (!grid) return 1;
+  let d: number;
+  const s = GIRTH === 1 ? 1 : bulk(x);
+  if (s === 1) d = sample(x, y, z);
+  else {
+    // A heavier or leaner arm is the same section, scaled about its centre.
+    section(x);
+    d = s * sample(x, secY + (y - secY) / s, secZ + (z - secZ) / s);
   }
-  let d = (k - 1) / Math.max(g, 1e-6);
-  const dx = x - X_PALM_END;
-  // The distal edge of the palm is rounded off; the fingers grow out of it.
-  d = dx > 0 ? (d > 0 ? Math.hypot(dx, d) : dx) : dx > d - 0.6 ? -smin(-d, -dx, 0.6) : d;
   // The limb is cut through the upper arm; the rim of the cut is rounded.
   const cut = X_PROXIMAL - x;
   return cut > d - 0.7 ? -smin(-d, -cut, 0.7) : d;
 }
 
-export interface Digit {
-  name: string;
-  joints: Vec3[];
-  radii: number[];
-}
-
-/**
- * A finger in the relaxed, slightly flexed posture of a resting hand: from the
- * knuckle, three phalanges of the given lengths, each curling further toward the palm.
- */
-function finger(name: string, knuckle: Vec3, lengths: number[], spreadDeg: number, curlDeg: number[], radii: number[]): Digit {
-  const joints: Vec3[] = [knuckle];
-  const spread = (spreadDeg * Math.PI) / 180;
-  for (let k = 0; k < 3; k++) {
-    const curl = (curlDeg[k] * Math.PI) / 180;
-    const p = joints[k];
-    joints.push([
-      p[0] + lengths[k] * Math.cos(curl) * Math.cos(spread),
-      p[1] + lengths[k] * Math.cos(curl) * Math.sin(spread),
-      p[2] + lengths[k] * Math.sin(curl),
-    ]);
-  }
-  return { name, joints, radii };
-}
-
-/** Joint centres (CMC/MCP → tip) and soft-tissue radii for each digit. */
-export const DIGITS: Digit[] = [
-  {
-    // The thumb sits in front of the palm and points away from the fingers.
-    name: "Thumb",
-    joints: [
-      [28.0, 2.6, 0.9],
-      [31.6, 5.0, 1.9],
-      [34.4, 6.5, 2.5],
-      [36.6, 7.5, 2.9],
-    ],
-    radii: [1.45, 1.1, 1.0, 0.8],
-  },
-  finger("Index", [34.6, 3.0, 0.1], [4.5, 2.6, 2.3], 5, [8, 22, 34], [0.93, 0.83, 0.75, 0.62]),
-  finger("Middle", [35.0, 1.0, 0.1], [4.9, 3.0, 2.5], 0.5, [9, 24, 36], [0.96, 0.86, 0.77, 0.64]),
-  finger("Ring", [34.5, -0.95, 0.1], [4.5, 2.8, 2.4], -4.5, [10, 26, 38], [0.9, 0.8, 0.72, 0.6]),
-  finger("Little", [33.5, -2.75, 0.05], [3.6, 2.0, 2.1], -10, [11, 27, 39], [0.8, 0.7, 0.63, 0.53]),
-];
-
-interface Cone {
-  ax: number; ay: number; az: number;
-  bx: number; by: number; bz: number;
-  r1: number; r2: number;
-  l2: number; rr: number; a2: number; il2: number;
-  min: Vec3; max: Vec3;
-}
-
-const BLEND = 0.55;
-/** Ratio of finger width to finger thickness. */
-export const FINGER_FLATTEN = 1.12;
-
-const DIGIT_CONES: Cone[][] = DIGITS.map((d) =>
-  d.joints.slice(0, -1).map((a, i) => {
-    const b = d.joints[i + 1];
-    const r1 = d.radii[i];
-    const r2 = d.radii[i + 1];
-    const l2 = (b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2 + (b[2] - a[2]) ** 2;
-    const rr = r1 - r2;
-    const m = Math.max(r1, r2) + BLEND + 0.6;
-    return {
-      ax: a[0], ay: a[1], az: a[2],
-      bx: b[0], by: b[1], bz: b[2],
-      r1, r2, l2, rr, a2: l2 - rr * rr, il2: 1 / l2,
-      min: [Math.min(a[0], b[0]) - m, Math.min(a[1], b[1]) - m, Math.min(a[2], b[2]) - m],
-      max: [Math.max(a[0], b[0]) + m, Math.max(a[1], b[1]) + m, Math.max(a[2], b[2]) + m],
-    };
-  }),
-);
-
-function roundCone(c: Cone, x: number, y: number, z: number): number {
-  const px = x - c.ax, py = y - c.ay, pz = z - c.az;
-  const bax = c.bx - c.ax, bay = c.by - c.ay, baz = c.bz - c.az;
-  const yy = px * bax + py * bay + pz * baz;
-  const zz = yy - c.l2;
-  const qx = px * c.l2 - bax * yy, qy = py * c.l2 - bay * yy, qz = pz * c.l2 - baz * yy;
-  const x2 = qx * qx + qy * qy + qz * qz;
-  const y2 = yy * yy * c.l2;
-  const z2 = zz * zz * c.l2;
-  const k = Math.sign(c.rr) * c.rr * c.rr * x2;
-  if (Math.sign(zz) * c.a2 * z2 > k) return Math.sqrt(x2 + z2) * c.il2 - c.r2;
-  if (Math.sign(yy) * c.a2 * y2 < k) return Math.sqrt(x2 + y2) * c.il2 - c.r1;
-  return (Math.sqrt(x2 * c.a2 * c.il2) + yy * c.rr) * c.il2 - c.r1;
-}
-
-type Ball = readonly [centre: Vec3, radius: number, blend: number];
-type Cord = readonly [from: Vec3, to: Vec3, radius: number, blend: number];
-
-/** Bony points and soft pads that rise from the loft. */
-const LANDMARKS: Ball[] = [
-  [[-1.4, -0.5, -3.15], 1.25, 1.0], // olecranon
-  [[-0.9, -3.75, -0.6], 1.0, 0.9], // medial epicondyle
-  [[25.2, -2.0, -1.0], 0.9, 0.6], // head of ulna
-  [[26.2, 2.3, -0.1], 0.8, 0.6], // radial styloid
-  [[30.0, 2.7, 1.15], 1.7, 1.0], // thenar eminence
-  [[30.4, -3.0, 0.75], 1.45, 0.9], // hypothenar eminence
-  ...DIGITS.slice(1).map((d): Ball => [[d.joints[0][0] + 0.1, d.joints[0][1], -0.85], 0.8, 0.5]), // knuckles
-  // Interphalangeal joints are a little broader than the phalanges on either side of them.
-  ...DIGITS.flatMap((d) => [1, 2].map((k): Ball => [d.joints[k], d.radii[k] * 0.9, 0.15])),
-];
-
-/** Cords that stand out under thin skin. */
-const RIDGES: Cord[] = [
-  // extensor tendons fanning across the back of the hand to each knuckle
-  ...DIGITS.slice(1).map((d): Cord => [[27.4, d.joints[0][1] * 0.28, -1.28], [d.joints[0][0] - 0.5, d.joints[0][1], -0.86], 0.4, 0.5]),
-  [[20, 0.0, 2.35], [26.4, 0.05, 1.82], 0.3, 0.55], // palmaris longus
-  [[20, 1.15, 2.15], [26.4, 1.3, 1.62], 0.32, 0.55], // flexor carpi radialis
-  [[21, -2.3, 1.42], [26.6, -2.2, 1.12], 0.34, 0.55], // flexor carpi ulnaris
-  [[-4.5, 0.5, 3.6], [1.2, 0.9, 2.6], 0.5, 0.8], // biceps tendon
-];
-
-/** Hollows pressed into the surface. */
-const HOLLOWS: Ball[] = [
-  [[2.3, 0.9, 5.2], 2.0, 1.1], // cubital fossa, beside brachioradialis
-  [[2.6, -1.3, 5.15], 1.8, 1.1], // cubital fossa, medial to the biceps tendon
-  [[32.3, 0.4, 3.1], 2.0, 0.9], // hollow of the palm
-];
-
-/** The primitives that can influence a given part of the limb. */
-interface Active {
-  balls: Ball[];
-  cords: Cord[];
-  hollows: Ball[];
-  cones: Cone[][];
-}
-
-/** Surface features ride outward with the skin when the arm carries more tissue. */
-const outward = (p: Vec3): Vec3 => [p[0], p[1] * bulk(p[0]), p[2] * bulk(p[0])];
-const everything = (): Active => ({
-  balls: LANDMARKS.map(([c, r, k]): Ball => [outward(c), r, k]),
-  cords: RIDGES.map(([a, b, r, k]): Cord => [outward(a), outward(b), r, k]),
-  hollows: HOLLOWS.map(([c, r, k]): Ball => [outward(c), r, k]),
-  cones: DIGIT_CONES,
-});
-let EVERYTHING: Active = everything();
-
-/** Change the soft-tissue build of the arm. Everything derived from the field must be rebuilt afterwards. */
-export function setGirth(g: number) {
-  if (g === GIRTH) return;
-  GIRTH = g;
-  EVERYTHING = everything();
-  sectionX = NaN;
-  cachedField = null;
-}
-
-/** Only what can reach the plane at x: the grid is filled slice by slice, so most primitives drop out. */
-function activeAt(x: number): Active {
-  return {
-    balls: EVERYTHING.balls.filter(([c, r, k]) => Math.abs(x - c[0]) <= r + k),
-    cords: EVERYTHING.cords.filter(([a, b, r, k]) => x >= Math.min(a[0], b[0]) - r - k && x <= Math.max(a[0], b[0]) + r + k),
-    hollows: EVERYTHING.hollows.filter(([c, r, k]) => Math.abs(x - c[0]) <= r + k),
-    cones: DIGIT_CONES.map((cones) => cones.filter((c) => x >= c.min[0] && x <= c.max[0])),
-  };
-}
-
-function evaluate(x: number, y: number, z: number, act: Active): number {
-  let d = armSDF(x, y, z);
-  // Nothing added to the arm reaches further than this from the loft.
-  if (x < 26 && (d > 2.4 || d < -3.2)) return d;
-  for (const [c, r, k] of act.balls) {
-    const dd = Math.hypot(x - c[0], y - c[1], z - c[2]) - r;
-    if (dd < d + k) d = smin(d, dd, k);
-  }
-  for (const [a, b, r, k] of act.cords) {
-    const abx = b[0] - a[0], aby = b[1] - a[1], abz = b[2] - a[2];
-    const t = Math.min(Math.max(((x - a[0]) * abx + (y - a[1]) * aby + (z - a[2]) * abz) / (abx * abx + aby * aby + abz * abz), 0), 1);
-    const dd = Math.hypot(x - a[0] - abx * t, y - a[1] - aby * t, z - a[2] - abz * t) - r;
-    if (dd < d + k) d = smin(d, dd, k);
-  }
-  for (const [c, r, k] of act.hollows) {
-    // Carving is a smooth maximum of the limb and the inside of the sphere.
-    const inside = r - Math.hypot(x - c[0], y - c[1], z - c[2]);
-    if (inside > d - k) d = -smin(-d, -inside, k);
-  }
-  if (x < 26) return d;
-  let digits = 1e9;
-  for (let n = 0; n < act.cones.length; n++) {
-    let dd = 1e9;
-    for (const c of act.cones[n]) {
-      if (y < c.min[1] || y > c.max[1] || z < c.min[2] || z > c.max[2] || x < c.min[0] || x > c.max[0]) continue;
-      // Fingers are a little wider than they are thick; the thumb stays round.
-      const zc = (c.az + c.bz) / 2;
-      dd = smin(dd, roundCone(c, x, y, n === 0 ? z : zc + (z - zc) * FINGER_FLATTEN), 0.25);
-    }
-    if (dd < digits) digits = dd;
-  }
-  if (digits < 1e8) d = smin(d, digits, BLEND);
-  return d;
-}
-
-/** Signed distance (cm) to the skin surface: negative inside the limb. */
-export function skinSDF(x: number, y: number, z: number): number {
-  return evaluate(x, y, z, EVERYTHING);
-}
-
-const E = 0.04;
+const E = 0.15;
 
 /** Unit outward normal of the skin field at a point. */
 export function skinNormal(x: number, y: number, z: number): Vec3 {
@@ -357,29 +300,44 @@ export function keepInside(p: Vec3, margin: number): Vec3 {
   return skinSDF(p[0], p[1], p[2]) > -margin ? projectToDepth(p, margin, 3) : p;
 }
 
-/** Point on the limb at station x, `thetaDeg` around the long axis (0° radial, 90° anterior). */
+/**
+ * Point on the limb at station x, `thetaDeg` around the long axis of the
+ * reference limb (0° radial, 90° anterior), `depth` cm beneath the skin.
+ */
 export function onLimb(x: number, thetaDeg: number, depth: number): Vec3 {
   const t = (thetaDeg * Math.PI) / 180;
-  const cy = Math.cos(t);
-  const cz = Math.sin(t);
+  const c = Math.cos(t);
+  const s = Math.sin(t);
+  // Where that direction meets the skin of the reference limb…
+  reference(x);
+  const n = ref[4];
+  const k = Math.pow(Math.pow(Math.abs(c) / (c >= 0 ? ref[0] : ref[1]), n) + Math.pow(Math.abs(s) / (s >= 0 ? ref[2] : ref[3]), n), 1 / n);
+  const refY = (ref[0] - ref[1]) / 2;
+  const refZ = (ref[2] - ref[3]) / 2;
+  // …and the same place on the section of this limb.
+  section(x);
+  const cy = secY;
+  const cz = secZ;
+  const dy = (c / k - refY) * (secW / ((ref[0] + ref[1]) / 2));
+  const dz = (s / k - refZ) * (secD / ((ref[2] + ref[3]) / 2));
   let lo = 0;
-  let hi = 9;
+  let hi = 2.4 * bulk(x);
   for (let i = 0; i < 28; i++) {
     const mid = (lo + hi) / 2;
-    if (skinSDF(x, cy * mid, cz * mid) < 0) lo = mid;
+    if (skinSDF(x, cy + dy * mid, cz + dz * mid) < 0) lo = mid;
     else hi = mid;
   }
-  return projectToDepth([x, cy * lo, cz * lo], depth);
+  return projectToDepth([x, cy + dy * lo, cz + dz * lo], depth);
 }
 
 /** Point beneath the dorsal (posterior) skin of the hand or a finger at (x, y). */
 export function onDorsum(x: number, y: number, depth: number): Vec3 {
   // Fingers curl toward the palm, so look down through the hand for where it starts and ends.
   const step = 0.08;
-  let z = 5;
-  while (z > -4 && skinSDF(x, y, z) > 0) z -= step;
-  if (z <= -4) return [x, y, 0];
-  while (z > -4 && skinSDF(x, y, z) <= 0) z -= step;
+  let z = 7;
+  while (z > -5 && skinSDF(x, y, z) > 0) z -= step;
+  if (z <= -5) return [x, y, 0];
+  while (z > -5 && skinSDF(x, y, z) <= 0) z -= step;
   let lo = z + step;
   let hi = z;
   for (let i = 0; i < 20; i++) {
@@ -397,26 +355,38 @@ export interface Field {
   h: number;
 }
 
-/** Sample the skin field on a regular grid (computed once). */
+let cachedField: Field | null = null;
+
+/** Sample the skin field on a regular grid (computed once for each build of the arm). */
 export function skinField(h = 0.11): Field {
   if (cachedField && cachedField.h === h) return cachedField;
-  const origin: Vec3 = [X_PROXIMAL - 1, -6.4, -6.2];
+  const g = grid!;
+  // Room for the hand as stored, and for the arm at its present build.
+  const lo: Vec3 = [X_PROXIMAL - 1, g.oy + 0.4, g.oz + 0.4];
+  const hi: Vec3 = [g.ox + (g.nx - 1) * g.h - 0.4, g.oy + (g.ny - 1) * g.h - 0.4, g.oz + (g.nz - 1) * g.h - 0.4];
+  for (const s of SECTIONS) {
+    if (s[3] === 0) break;
+    const f = bulk(s[0]);
+    lo[1] = Math.min(lo[1], s[1] - s[3] * f - 0.5);
+    hi[1] = Math.max(hi[1], s[1] + s[3] * f + 0.5);
+    lo[2] = Math.min(lo[2], s[2] - s[4] * f - 0.5);
+    hi[2] = Math.max(hi[2], s[2] + s[4] * f + 0.5);
+  }
   const dims: [number, number, number] = [
-    Math.ceil((48.6 - origin[0]) / h) + 1,
-    Math.ceil((9.6 - origin[1]) / h) + 1,
-    Math.ceil((6.4 - origin[2]) / h) + 1,
+    Math.ceil((hi[0] - lo[0]) / h) + 1,
+    Math.ceil((hi[1] - lo[1]) / h) + 1,
+    Math.ceil((hi[2] - lo[2]) / h) + 1,
   ];
   const [nx, ny, nz] = dims;
   const data = new Float32Array(nx * ny * nz);
   for (let i = 0; i < nx; i++) {
-    const x = origin[0] + i * h;
-    const act = activeAt(x);
+    const x = lo[0] + i * h;
     for (let k = 0; k < nz; k++) {
-      const z = origin[2] + k * h;
-      for (let j = 0; j < ny; j++) data[i + nx * (j + ny * k)] = evaluate(x, origin[1] + j * h, z, act);
+      const z = lo[2] + k * h;
+      for (let j = 0; j < ny; j++) data[i + nx * (j + ny * k)] = skinSDF(x, lo[1] + j * h, z);
     }
   }
-  cachedField = { data, dims, origin, h };
+  cachedField = { data, dims, origin: lo, h };
   return cachedField;
 }
 
@@ -428,7 +398,7 @@ const CUBE_EDGES: ReadonlyArray<readonly [number, number]> = [
 
 /**
  * Naive surface nets: extract the iso-surface `field = iso` as an indexed triangle mesh.
- * With `skinNormals`, normals come from the analytic skin field rather than the mesh.
+ * With `skinNormals`, normals come from the skin field rather than the mesh.
  */
 export function surfaceNets(f: Field, iso: number, skinNormals = true) {
   const [nx, ny, nz] = f.dims;

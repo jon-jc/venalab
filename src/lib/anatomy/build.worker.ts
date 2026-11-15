@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 import { BufferAttribute, type BufferGeometry } from "three";
 import { buildNails, buildShell, buildStructures, pack, skinAO, surfaceGradient, veinShade, type Body, type Packed, type Path } from "./geometry";
-import { setGirth, type Vec3 } from "./skin";
+import { loadLimb, setGirth, type Vec3 } from "./skin";
 import type { Pattern } from "./structures";
 
 /**
@@ -43,8 +43,15 @@ let skinGirth = NaN;
 let sentGirth = NaN;
 const post = (m: Reply) => (self as unknown as Worker).postMessage(m);
 
+/** Requests are answered one at a time, in order, once the shape of the limb has arrived. */
+let queue: Promise<void> = loadLimb();
+
 self.addEventListener("message", (e: MessageEvent<Request>) => {
-  const { id, pattern, body } = e.data;
+  // One failed build must not hold up the requests behind it.
+  queue = queue.then(() => build(e.data)).catch((err) => console.error(err));
+});
+
+function build({ id, pattern, body }: Request) {
   const started = performance.now();
   setGirth(body.girth);
   if (!skin || skinGirth !== body.girth) {
@@ -68,4 +75,4 @@ self.addEventListener("message", (e: MessageEvent<Request>) => {
     structures: built.map((b) => ({ id: b.def.id, geometry: pack(b.geometry), paths: b.paths, anchor: b.anchor })),
   });
   if (fresh) post({ kind: "shells", girth: body.girth, fat: pack(buildShell(0.035)), fascia: pack(buildShell(0.6)) });
-});
+}

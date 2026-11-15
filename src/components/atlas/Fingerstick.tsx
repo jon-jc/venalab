@@ -21,7 +21,8 @@ function goodSites() {
     const axis = new THREE.Vector3(...d.joints[3]).sub(a);
     const o = a.clone().addScaledVector(axis, 0.68);
     axis.normalize();
-    const pad = new THREE.Vector3(0, 0, 1).addScaledVector(axis, -axis.z).normalize();
+    const pad = new THREE.Vector3(...d.back).negate();
+    pad.addScaledVector(axis, -pad.dot(axis)).normalize();
     const side = new THREE.Vector3().crossVectors(pad, axis);
     for (const sign of [-1, 1]) {
       const ray = pad.clone().multiplyScalar(Math.cos(0.6)).addScaledVector(side, sign * Math.sin(0.6));
