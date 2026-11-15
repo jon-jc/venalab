@@ -314,7 +314,7 @@ export interface Field {
 let cachedField: Field | null = null;
 
 /** Sample the skin field on a regular grid (computed once). */
-export function skinField(h = 0.16): Field {
+export function skinField(h = 0.12): Field {
   if (cachedField && cachedField.h === h) return cachedField;
   const origin: Vec3 = [-19, -6.4, -6.2];
   const dims: [number, number, number] = [
@@ -344,7 +344,7 @@ const CUBE_EDGES: ReadonlyArray<readonly [number, number]> = [
 ];
 
 /** Naive surface nets: extract the iso-surface `field = iso` as an indexed triangle mesh. */
-export function surfaceNets(f: Field, iso: number) {
+export function surfaceNets(f: Field, iso: number, skinNormals = true) {
   const [nx, ny, nz] = f.dims;
   const { data, origin, h } = f;
   const cell = new Int32Array(nx * ny * nz).fill(-1);
@@ -398,8 +398,8 @@ export function surfaceNets(f: Field, iso: number) {
       }
 
   const positions = new Float32Array(pos);
-  const normals = new Float32Array(pos.length);
-  for (let p = 0; p < pos.length; p += 3) {
+  const normals = new Float32Array(skinNormals ? pos.length : 0);
+  for (let p = 0; p < normals.length; p += 3) {
     const n = skinNormal(pos[p], pos[p + 1], pos[p + 2]);
     normals[p] = n[0];
     normals[p + 1] = n[1];

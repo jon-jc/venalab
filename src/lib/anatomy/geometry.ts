@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { DIGITS, FINGER_FLATTEN, keepInside, onDorsum, onLimb, projectToDepth, skinField, skinSDF, surfaceNets, type Vec3 } from "./skin";
+import { DIGITS, FINGER_FLATTEN, keepInside, onDorsum, onLimb, projectToDepth, skinField, skinSDF, surfaceNets, type Field, type Vec3 } from "./skin";
 import { LAYER_COLOR, structuresFor, TENDON, type Part, type Pattern, type Pt, type Radius, type StructureDef } from "./structures";
 
 /** Centre-line of a tubular structure with its radius at every sample. */
@@ -35,7 +35,7 @@ function radiusAt(r: Radius, t: number): number {
 }
 
 /** Turn control points into a densely sampled centre-line that hugs its tissue plane. */
-function resolve(pts: Pt[], centreMargin: (x: number) => number, perSpan = 12): Vec3[] {
+function resolve(pts: Pt[], centreMargin: (x: number) => number, perSpan = 18): Vec3[] {
   const ctrl: THREE.Vector3[] = [];
   const depth: (number | null)[] = [];
   for (const pt of pts) {
@@ -178,7 +178,7 @@ function paint(g: THREE.BufferGeometry, def: StructureDef, tube: { radii: number
 function buildPart(part: Part, def: StructureDef): { g: THREE.BufferGeometry; path?: Path } {
   const margin = MARGIN[def.layer];
   if (part.kind === "blob") {
-    const g = new THREE.SphereGeometry(1, 16, 12);
+    const g = new THREE.SphereGeometry(1, 40, 28);
     g.deleteAttribute("uv");
     g.scale(part.r[0], part.r[1], part.r[2]);
     g.translate(part.c[0], part.c[1], part.c[2]);
@@ -203,7 +203,7 @@ function buildPart(part: Part, def: StructureDef): { g: THREE.BufferGeometry; pa
       if (-skinSDF(pts[i][0], pts[i][1], pts[i][2]) < need) pts[i] = projectToDepth(pts[i], need);
     }
   }
-  const radial = def.layer === "muscles" ? 18 : def.layer === "bones" ? 14 : 12;
+  const radial = def.layer === "muscles" ? 40 : def.layer === "nerves" ? 16 : 24;
   const g = tubeGeometry(pts, radii, part.flat ?? 1, radial);
   constrain(g, margin);
   if (def.layer !== "veins" && def.layer !== "arteries") g.deleteAttribute("aRadius");
@@ -212,12 +212,124 @@ function buildPart(part: Part, def: StructureDef): { g: THREE.BufferGeometry; pa
   return { g, path: { pts, radii } };
 }
 
+type Prim = { a: Vec3; b: Vec3; r1: number; r2: number } | { c: Vec3; r: Vec3 };
+
+/**
+ * Mesh a smooth union of tapered capsules and ellipsoids. Bones are built this
+ * way so that shafts flare into their ends and condyles blend into the shaft,
+ * instead of being separate primitives pushed through each other.
+ */
+function sdfMesh(prims: Prim[], blend: number, h: number): THREE.BufferGeometry {
+  const lo: Vec3 = [Infinity, Infinity, Infinity];
+  const hi: Vec3 = [-Infinity, -Infinity, -Infinity];
+  const boxes = prims.map((p) => {
+    const min: Vec3 = [0, 0, 0];
+    const max: Vec3 = [0, 0, 0];
+    for (let k = 0; k < 3; k++) {
+      if ("c" in p) {
+        min[k] = p.c[k] - p.r[k];
+        max[k] = p.c[k] + p.r[k];
+      } else {
+        const r = Math.max(p.r1, p.r2);
+        min[k] = Math.min(p.a[k], p.b[k]) - r;
+        max[k] = Math.max(p.a[k], p.b[k]) + r;
+      }
+      lo[k] = Math.min(lo[k], min[k]);
+      hi[k] = Math.max(hi[k], max[k]);
+    }
+    return { min, max };
+  });
+  const pad = blend + 3 * h;
+  const origin: Vec3 = [lo[0] - pad, lo[1] - pad, lo[2] - pad];
+  const dims: [number, number, number] = [0, 1, 2].map((k) => Math.ceil((hi[k] - lo[k] + 2 * pad) / h) + 1) as [number, number, number];
+  const [nx, ny] = dims;
+  const data = new Float32Array(dims[0] * dims[1] * dims[2]).fill(9);
+  prims.forEach((p, n) => {
+    const i0 = [0, 1, 2].map((k) => Math.max(0, Math.floor((boxes[n].min[k] - blend - origin[k]) / h)));
+    const i1 = [0, 1, 2].map((k) => Math.min(dims[k] - 1, Math.ceil((boxes[n].max[k] + blend - origin[k]) / h)));
+    for (let k = i0[2]; k <= i1[2]; k++)
+      for (let j = i0[1]; j <= i1[1]; j++)
+        for (let i = i0[0]; i <= i1[0]; i++) {
+          const x = origin[0] + i * h, y = origin[1] + j * h, z = origin[2] + k * h;
+          let d: number;
+          if ("c" in p) {
+            const qx = (x - p.c[0]) / p.r[0], qy = (y - p.c[1]) / p.r[1], qz = (z - p.c[2]) / p.r[2];
+            const k0 = Math.hypot(qx, qy, qz);
+            const k1 = Math.hypot(qx / p.r[0], qy / p.r[1], qz / p.r[2]);
+            d = k1 > 1e-9 ? (k0 * (k0 - 1)) / k1 : -Math.min(p.r[0], p.r[1], p.r[2]);
+          } else {
+            const [t2, t] = segDist2([x, y, z], p.a, p.b);
+            d = Math.sqrt(t2) - (p.r1 + (p.r2 - p.r1) * t);
+          }
+          const at = i + nx * (j + ny * k);
+          const cur = data[at];
+          const w = Math.max(blend - Math.abs(cur - d), 0) / blend;
+          data[at] = Math.min(cur, d) - w * w * blend * 0.25;
+        }
+  });
+  const field: Field = { data, dims, origin, h };
+  const m = surfaceNets(field, 0, false);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.BufferAttribute(m.positions, 3));
+  g.setIndex(new THREE.BufferAttribute(m.indices, 1));
+  return g;
+}
+
+/** Bones: every part becomes implicit primitives; parts of one bone are fused, separate bones stay separate. */
+function buildBone(def: StructureDef): { geometry: THREE.BufferGeometry; paths: Path[] } {
+  const margin = MARGIN.bones;
+  const paths: Path[] = [];
+  const groups: Prim[][] = [];
+  const fuse = def.parts.some((p) => p.kind === "blob") && def.parts.some((p) => p.kind === "tube");
+  for (const part of def.parts) {
+    const prims: Prim[] = [];
+    if (part.kind === "blob") prims.push({ c: part.c, r: part.r });
+    else {
+      const pts = resolve(part.pts, margin, 10);
+      const radii = pts.map((_, i) => radiusAt(part.r, i / (pts.length - 1)));
+      paths.push({ pts, radii });
+      // Separate bones stop just short of the joint centre, leaving a joint space between neighbours.
+      const gap = fuse ? 0 : 1;
+      for (let i = gap; i < pts.length - 2 - gap; i += 2) prims.push({ a: pts[i], b: pts[i + 2], r1: radii[i], r2: radii[i + 2] });
+    }
+    if (fuse && groups.length) groups[0].push(...prims);
+    else groups.push(prims);
+  }
+  const meshes = groups.map((prims) => {
+    const g = sdfMesh(prims, fuse ? 0.45 : 0.12, 0.07);
+    constrain(g, margin);
+    return g;
+  });
+  return { geometry: mergeGeometries(meshes, false)!, paths };
+}
+
+export interface Packed {
+  attributes: Record<string, { array: Float32Array; itemSize: number }>;
+  index: Uint16Array | Uint32Array | null;
+}
+
+/** Plain-data form of a geometry, for posting between a worker and the page. */
+export function pack(g: THREE.BufferGeometry): Packed {
+  const attributes: Packed["attributes"] = {};
+  for (const [name, attr] of Object.entries(g.attributes)) attributes[name] = { array: attr.array as Float32Array, itemSize: attr.itemSize };
+  return { attributes, index: (g.getIndex()?.array as Uint16Array | Uint32Array | undefined) ?? null };
+}
+
+export function unpack(p: Packed): THREE.BufferGeometry {
+  const g = new THREE.BufferGeometry();
+  for (const [name, a] of Object.entries(p.attributes)) g.setAttribute(name, new THREE.BufferAttribute(a.array, a.itemSize));
+  if (p.index) g.setIndex(new THREE.BufferAttribute(p.index, 1));
+  g.computeBoundingSphere();
+  return g;
+}
+
 /** Build renderable geometry and centre-line paths for every structure in the chosen venous pattern. */
 export function buildStructures(pattern: Pattern): Built[] {
   return structuresFor(pattern).map((def) => {
-    const built = def.parts.map((p) => buildPart(p, def));
-    const geometry = mergeGeometries(built.map((b) => b.g), false)!;
-    const paths = built.flatMap((b) => (b.path ? [b.path] : []));
+    const bone = def.layer === "bones" ? buildBone(def) : null;
+    const built = bone ? [] : def.parts.map((p) => buildPart(p, def));
+    const geometry = bone ? bone.geometry : mergeGeometries(built.map((b) => b.g), false)!;
+    const paths = bone ? bone.paths : built.flatMap((b) => (b.path ? [b.path] : []));
     let anchor: Vec3;
     if (paths.length) {
       const p = paths[0].pts;
@@ -243,7 +355,7 @@ export function buildNails(): THREE.BufferGeometry {
     const r = d.radii[2] + (d.radii[3] - d.radii[2]) * 0.6;
     const thick = r * 0.32;
     const surface = i === 0 ? r : r / FINGER_FLATTEN;
-    const g = new THREE.SphereGeometry(1, 24, 14);
+    const g = new THREE.SphereGeometry(1, 48, 28);
     g.deleteAttribute("uv");
     g.scale(len * 0.42 + 0.12, r * 0.74, thick);
     g.applyMatrix4(new THREE.Matrix4().makeBasis(axis, side, back));

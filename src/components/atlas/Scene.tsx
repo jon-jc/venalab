@@ -5,13 +5,14 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { ContactShadows, Environment, Lightformer, OrbitControls } from "@react-three/drei";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
-import { buildNails, buildShell, buildStructures, surfaceGradient, veinShade, type Built } from "@/lib/anatomy/geometry";
+import type { Built } from "@/lib/anatomy/geometry";
 import { DILATION, needleDir, palpate } from "@/lib/anatomy/sim";
 import { onLimb, skinNormal, type Vec3 } from "@/lib/anatomy/skin";
 import { LAYER_COLOR, LAYER_ORDER, type LayerId } from "@/lib/anatomy/structures";
 import { heartbeat, live } from "./live";
 import { arteryMaterial, boneMaterial, fasciaMaterial, fatMaterial, muscleMaterial, nerveMaterial, skinMaterial, skinUniforms, veinMaterial } from "./materials";
 import { effectiveLayers, labelEls, TONES, useAtlas, VIEWS, type Layers } from "./store";
+import { useAnatomy } from "./useAnatomy";
 
 /** The model is shifted so the mid-forearm sits at the world origin. */
 const OFFSET = 14;
@@ -381,33 +382,26 @@ function Arm() {
   const [assemble] = useState(() => useAtlas.getState().mode === "explore");
   const layers = useAnimatedLayers(target, assemble);
 
-  const skin = useMemo(() => buildShell(0), []);
-  const nails = useMemo(() => buildNails(), []);
-  // The deeper shells are only meshed the first time they are shown.
-  const fat = useMemo(() => (target.fat > 0 ? buildShell(0.035) : null), [target.fat > 0]); // eslint-disable-line react-hooks/exhaustive-deps
-  const fascia = useMemo(() => (target.fascia > 0 ? buildShell(0.6) : null), [target.fascia > 0]); // eslint-disable-line react-hooks/exhaustive-deps
-  const shells = useMemo(() => ({ skin, fat, fascia }), [skin, fat, fascia]);
+  // Meshes are built in a background worker; nothing is drawn until the first arrives.
+  const anatomy = useAnatomy(pattern);
+  const built = useMemo(() => anatomy?.built ?? [], [anatomy]);
+  const shells = useMemo(() => ({ skin: anatomy?.skin ?? null, fat: anatomy?.fat ?? null, fascia: anatomy?.fascia ?? null }), [anatomy]);
+  const shade = (anatomy?.skin.getAttribute("aVein")?.array as Float32Array | undefined) ?? null;
 
   useEffect(() => {
     const tone = new THREE.Color(TONES[useAtlas.getState().tone].color);
     skinUniforms.uPalm.value.copy(nir ? new THREE.Color("#2fbf86") : tone.clone().lerp(new THREE.Color("#f4c6b6"), 0.55));
     skinUniforms.uRim.value.set(nir ? "#000000" : "#5a1a12");
   }, [tone, nir]);
-  const built = useMemo(() => buildStructures(pattern), [pattern]);
-  const shade = useMemo(() => {
-    const s = veinShade(shells.skin, built);
-    shells.skin.setAttribute("aVein", new THREE.BufferAttribute(s, 1));
-    shells.skin.setAttribute("aVeinGrad", new THREE.BufferAttribute(surfaceGradient(shells.skin, s), 3));
-    return s;
-  }, [shells, built]);
-
   useEffect(() => {
     useAtlas.getState().set({ built });
   }, [built]);
+  const ready = !!anatomy;
 
   // Veins show through the skin as a blue-green tint; a tourniquet makes them stand out.
   const tinted = useRef(-1);
   const tint = (swell: number) => {
+    if (!shells.skin || !shade) return;
     let attr = shells.skin.getAttribute("color") as THREE.BufferAttribute | undefined;
     if (!attr) {
       attr = new THREE.BufferAttribute(new Float32Array(shade.length * 3), 3);
@@ -425,7 +419,7 @@ function Arm() {
     attr.needsUpdate = true;
     tinted.current = swell;
   };
-  useLayoutEffect(() => tint(live.vein.value), [shade, tone, nir]); // eslint-disable-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => tint(live.vein.value), [shade, tone, nir, anatomy]); // eslint-disable-line react-hooks/exhaustive-deps
   useFrame(() => {
     if (Math.abs(live.vein.value - tinted.current) > 0.004) tint(live.vein.value);
   });
@@ -475,6 +469,7 @@ function Arm() {
   const block = (e: ThreeEvent<MouseEvent | PointerEvent>) => e.stopPropagation();
   const showFlow = flow && mode === "explore" && !nir;
 
+  if (!ready || !shells.skin) return null;
   return (
     <group position={[-OFFSET, 0, 0]}>
       {layers.skin > 0 && (
@@ -509,7 +504,7 @@ function Arm() {
         </mesh>
       )}
       {layers.skin > 0.5 && !nir && (
-        <mesh geometry={nails} renderOrder={ORDER.skin} raycast={noRaycast} receiveShadow>
+        <mesh geometry={anatomy.nails} renderOrder={ORDER.skin} raycast={noRaycast} receiveShadow>
           <meshPhysicalMaterial
             key={`${layers.skin < 1}`}
             color={new THREE.Color(TONES[tone].color).lerp(new THREE.Color("#f7d6cd"), 0.62)}
