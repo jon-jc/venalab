@@ -6,45 +6,62 @@
  *   y  radial / lateral (+) → ulnar / medial (−)
  *   z  anterior / palmar (+) → posterior / dorsal (−)
  *
- * The skin is a signed distance field: a lofted super-elliptical tube for the
- * arm and palm, smoothly blended with round cones for the digits. Deeper tissue
- * planes are iso-surfaces of the same field, so every layer follows the skin.
+ * The skin is a signed distance field. The arm and palm are a loft of
+ * cross-sections measured at stations along the limb; each section has its own
+ * extent in the four anatomical directions, so the biceps, triceps and forearm
+ * muscle masses bulge where they should. Digits are chains of round cones, and
+ * bony points, tendons and hollows are blended in on top. Deeper tissue planes
+ * are iso-surfaces of the same field, so every layer follows the skin.
  */
 
 export type Vec3 = [number, number, number];
 
-// [x, half-width (y), half-depth (z), super-ellipse exponent]
-const KEYS: ReadonlyArray<readonly [number, number, number, number]> = [
-  [-18, 4.5, 4.6, 2],
-  [-10, 4.6, 4.8, 2],
-  [-4, 4.3, 4.0, 2],
-  [0, 4.5, 3.5, 2],
-  [4, 4.7, 3.9, 2],
-  [10, 4.2, 3.5, 2],
-  [17, 3.3, 2.7, 2],
-  [23, 2.9, 2.1, 2.2],
-  [26, 2.9, 1.9, 2.5],
-  [29, 3.8, 1.6, 2.9],
-  [32, 4.25, 1.5, 3.1],
-  [35, 4.15, 1.35, 3.1],
-  [36.6, 3.8, 1.1, 3.0],
+/**
+ * Cross-sections of an average adult limb:
+ * [x, radial, ulnar, anterior, posterior extent, squareness].
+ * Squareness 2 is an ellipse; higher values approach a rounded rectangle (the palm).
+ */
+const KEYS: ReadonlyArray<readonly [number, number, number, number, number, number]> = [
+  [-21, 4.7, 4.5, 4.5, 4.8, 2], // below the deltoid insertion
+  [-17, 4.7, 4.5, 4.8, 4.8, 2],
+  [-13, 4.75, 4.55, 5.05, 4.8, 2], // biceps and triceps bellies
+  [-8, 4.5, 4.4, 4.7, 4.5, 2],
+  [-4, 4.3, 4.3, 4.0, 4.05, 2], // tapering toward the elbow
+  [-1.5, 4.45, 4.7, 3.5, 3.9, 2], // epicondyles: wide side to side, shallow front to back
+  [0, 4.55, 4.6, 3.4, 3.95, 2], // flexion crease
+  [2.5, 4.9, 4.6, 3.6, 3.85, 2], // brachioradialis laterally, flexor–pronator mass medially
+  [6, 4.9, 4.5, 4.0, 3.7, 2], // greatest girth of the forearm
+  [10, 4.5, 4.2, 3.8, 3.4, 2],
+  [14, 3.9, 3.8, 3.3, 3.0, 2],
+  [18, 3.4, 3.4, 2.8, 2.6, 2.05], // muscle gives way to tendon
+  [22, 3.05, 3.1, 2.3, 2.2, 2.2],
+  [24.5, 2.95, 3.0, 2.05, 2.0, 2.35],
+  [26, 2.95, 3.0, 1.95, 1.95, 2.5], // wrist crease
+  [27.5, 3.25, 3.3, 1.9, 1.8, 2.8], // carpus
+  [29.5, 3.8, 3.9, 1.75, 1.65, 3.0],
+  [32, 4.2, 4.2, 1.55, 1.55, 3.1],
+  [34.5, 4.25, 4.0, 1.4, 1.45, 3.2], // metacarpal heads
+  [35.7, 4.1, 3.8, 1.2, 1.15, 3.0],
+  [36.6, 3.8, 3.5, 0.95, 0.8, 2.6], // the palm thins into the roots of the fingers
 ];
 
 export const X_PROXIMAL = KEYS[0][0];
 const X_PALM_END = KEYS[KEYS.length - 1][0];
 
-const SLOPES = KEYS.map((k, i) => {
+const SLOPES = KEYS.map((_, i) => {
   const p = KEYS[Math.max(i - 1, 0)];
   const n = KEYS[Math.min(i + 1, KEYS.length - 1)];
   const dx = n[0] - p[0];
-  return [(n[1] - p[1]) / dx, (n[2] - p[2]) / dx, (n[3] - p[3]) / dx];
+  return [1, 2, 3, 4, 5].map((c) => (n[c] - p[c]) / dx);
 });
 
-const prof = { x: NaN, a: 1, b: 1, n: 2 };
+/** Section at x: [radial, ulnar, anterior, posterior, squareness], cached for the last x queried. */
+const section = [1, 1, 1, 1, 2];
+let sectionX = NaN;
 
-/** Cross-section of the limb at x (cached for the last x queried). */
-export function profile(x: number) {
-  if (x === prof.x) return prof;
+function loadSection(x: number) {
+  if (x === sectionX) return;
+  sectionX = x;
   const xc = Math.min(Math.max(x, X_PROXIMAL), X_PALM_END);
   let i = 0;
   while (i < KEYS.length - 2 && xc > KEYS[i + 1][0]) i++;
@@ -55,20 +72,22 @@ export function profile(x: number) {
   const t2 = t * t;
   const t3 = t2 * t;
   const h00 = 2 * t3 - 3 * t2 + 1;
-  const h10 = t3 - 2 * t2 + t;
+  const h10 = (t3 - 2 * t2 + t) * h;
   const h01 = -2 * t3 + 3 * t2;
-  const h11 = t3 - t2;
-  const m0 = SLOPES[i];
-  const m1 = SLOPES[i + 1];
-  prof.x = x;
-  prof.a = h00 * k0[1] + h10 * h * m0[0] + h01 * k1[1] + h11 * h * m1[0];
-  prof.b = h00 * k0[2] + h10 * h * m0[1] + h01 * k1[2] + h11 * h * m1[1];
-  prof.n = h00 * k0[3] + h10 * h * m0[2] + h01 * k1[3] + h11 * h * m1[2];
-  return prof;
+  const h11 = (t3 - t2) * h;
+  for (let c = 0; c < 5; c++) section[c] = h00 * k0[c + 1] + h10 * SLOPES[i][c] + h01 * k1[c + 1] + h11 * SLOPES[i + 1][c];
+}
+
+function smin(a: number, b: number, k: number): number {
+  const h = Math.max(k - Math.abs(a - b), 0) / k;
+  return Math.min(a, b) - h * h * k * 0.25;
 }
 
 function armSDF(x: number, y: number, z: number): number {
-  const { a, b, n } = profile(x);
+  loadSection(x);
+  const a = y >= 0 ? section[0] : section[1];
+  const b = z >= 0 ? section[2] : section[3];
+  const n = section[4];
   const ay = Math.abs(y) / a;
   const az = Math.abs(z) / b;
   let k: number;
@@ -88,8 +107,11 @@ function armSDF(x: number, y: number, z: number): number {
   }
   let d = (k - 1) / Math.max(g, 1e-6);
   const dx = x - X_PALM_END;
-  d = dx > 0 ? (d > 0 ? Math.hypot(dx, d) : dx) : Math.max(d, dx);
-  return Math.max(d, X_PROXIMAL - x);
+  // The distal edge of the palm is rounded off; the fingers grow out of it.
+  d = dx > 0 ? (d > 0 ? Math.hypot(dx, d) : dx) : dx > d - 0.6 ? -smin(-d, -dx, 0.6) : d;
+  // The limb is cut through the upper arm; the rim of the cut is rounded.
+  const cut = X_PROXIMAL - x;
+  return cut > d - 0.7 ? -smin(-d, -cut, 0.7) : d;
 }
 
 export interface Digit {
@@ -98,58 +120,42 @@ export interface Digit {
   radii: number[];
 }
 
+/**
+ * A finger in the relaxed, slightly flexed posture of a resting hand: from the
+ * knuckle, three phalanges of the given lengths, each curling further toward the palm.
+ */
+function finger(name: string, knuckle: Vec3, lengths: number[], spreadDeg: number, curlDeg: number[], radii: number[]): Digit {
+  const joints: Vec3[] = [knuckle];
+  const spread = (spreadDeg * Math.PI) / 180;
+  for (let k = 0; k < 3; k++) {
+    const curl = (curlDeg[k] * Math.PI) / 180;
+    const p = joints[k];
+    joints.push([
+      p[0] + lengths[k] * Math.cos(curl) * Math.cos(spread),
+      p[1] + lengths[k] * Math.cos(curl) * Math.sin(spread),
+      p[2] + lengths[k] * Math.sin(curl),
+    ]);
+  }
+  return { name, joints, radii };
+}
+
 /** Joint centres (CMC/MCP → tip) and soft-tissue radii for each digit. */
 export const DIGITS: Digit[] = [
   {
+    // The thumb sits in front of the palm and points away from the fingers.
     name: "Thumb",
     joints: [
-      [28.5, 3.0, 0.6],
-      [32.0, 5.6, 0.9],
-      [34.8, 7.2, 1.0],
-      [37.2, 8.3, 1.1],
+      [28.0, 2.6, 0.9],
+      [31.6, 5.0, 1.9],
+      [34.4, 6.5, 2.5],
+      [36.6, 7.5, 2.9],
     ],
-    radii: [1.5, 1.15, 1.0, 0.8],
+    radii: [1.45, 1.1, 1.0, 0.8],
   },
-  {
-    name: "Index",
-    joints: [
-      [35.0, 3.05, 0],
-      [39.6, 3.6, 0.15],
-      [42.2, 3.95, 0.35],
-      [44.3, 4.25, 0.6],
-    ],
-    radii: [0.92, 0.8, 0.72, 0.62],
-  },
-  {
-    name: "Middle",
-    joints: [
-      [35.6, 1.0, 0],
-      [40.6, 1.15, 0.15],
-      [43.6, 1.25, 0.35],
-      [46.0, 1.3, 0.6],
-    ],
-    radii: [0.95, 0.84, 0.75, 0.64],
-  },
-  {
-    name: "Ring",
-    joints: [
-      [35.2, -1.0, 0],
-      [39.8, -1.5, 0.15],
-      [42.6, -1.8, 0.35],
-      [44.9, -2.05, 0.6],
-    ],
-    radii: [0.9, 0.8, 0.7, 0.6],
-  },
-  {
-    name: "Little",
-    joints: [
-      [34.2, -2.85, 0],
-      [37.8, -3.6, 0.15],
-      [39.9, -4.05, 0.3],
-      [41.8, -4.45, 0.5],
-    ],
-    radii: [0.8, 0.7, 0.62, 0.54],
-  },
+  finger("Index", [34.6, 3.0, 0.1], [4.5, 2.6, 2.3], 5, [8, 22, 34], [0.93, 0.83, 0.75, 0.62]),
+  finger("Middle", [35.0, 1.0, 0.1], [4.9, 3.0, 2.5], 0.5, [9, 24, 36], [0.96, 0.86, 0.77, 0.64]),
+  finger("Ring", [34.5, -0.95, 0.1], [4.5, 2.8, 2.4], -4.5, [10, 26, 38], [0.9, 0.8, 0.72, 0.6]),
+  finger("Little", [33.5, -2.75, 0.05], [3.6, 2.0, 2.1], -10, [11, 27, 39], [0.8, 0.7, 0.63, 0.53]),
 ];
 
 interface Cone {
@@ -197,52 +203,97 @@ function roundCone(c: Cone, x: number, y: number, z: number): number {
   return (Math.sqrt(x2 * c.a2 * c.il2) + yy * c.rr) * c.il2 - c.r1;
 }
 
-function smin(a: number, b: number, k: number): number {
-  const h = Math.max(k - Math.abs(a - b), 0) / k;
-  return Math.min(a, b) - h * h * k * 0.25;
-}
+type Ball = readonly [centre: Vec3, radius: number, blend: number];
+type Cord = readonly [from: Vec3, to: Vec3, radius: number, blend: number];
 
-/**
- * Surface landmarks that break the smooth loft: bony points you can see and
- * feel, and the main muscle bellies. [centre, radius, blend width]
- */
-const LANDMARKS: ReadonlyArray<readonly [Vec3, number, number]> = [
-  [[-10.5, 0.3, 2.7], 2.5, 1.2], // biceps belly
-  [[-1.6, -0.7, -3.0], 1.4, 0.9], // olecranon
-  [[-0.7, -3.55, -1.0], 1.2, 0.8], // medial epicondyle
-  [[-0.5, 3.4, -0.9], 1.05, 0.8], // lateral epicondyle
-  [[5.5, 2.75, 1.3], 2.0, 1.0], // brachioradialis / mobile wad
-  [[6.0, -2.4, 1.5], 2.3, 1.0], // flexor–pronator mass
-  [[25.2, -2.15, -1.2], 0.9, 0.6], // head of ulna
-  [[26.2, 2.55, -0.15], 0.75, 0.6], // radial styloid
-  [[30.6, -3.0, 0.7], 1.45, 0.9], // hypothenar eminence
-  ...DIGITS.slice(1).map((d): readonly [Vec3, number, number] => [[d.joints[0][0] + 0.2, d.joints[0][1], -0.72], 0.82, 0.5]), // knuckles
+/** Bony points and soft pads that rise from the loft. */
+const LANDMARKS: Ball[] = [
+  [[-1.4, -0.5, -3.15], 1.25, 1.0], // olecranon
+  [[-0.9, -3.75, -0.6], 1.0, 0.9], // medial epicondyle
+  [[25.2, -2.0, -1.0], 0.9, 0.6], // head of ulna
+  [[26.2, 2.3, -0.1], 0.8, 0.6], // radial styloid
+  [[30.0, 2.7, 1.15], 1.7, 1.0], // thenar eminence
+  [[30.4, -3.0, 0.75], 1.45, 0.9], // hypothenar eminence
+  ...DIGITS.slice(1).map((d): Ball => [[d.joints[0][0] + 0.1, d.joints[0][1], -0.85], 0.8, 0.5]), // knuckles
+  // Interphalangeal joints are a little broader than the phalanges on either side of them.
+  ...DIGITS.flatMap((d) => [1, 2].map((k): Ball => [d.joints[k], d.radii[k] * 0.9, 0.15])),
 ];
 
-/** Signed distance (cm) to the skin surface: negative inside the limb. */
-export function skinSDF(x: number, y: number, z: number): number {
+/** Cords that stand out under thin skin. */
+const RIDGES: Cord[] = [
+  // extensor tendons fanning across the back of the hand to each knuckle
+  ...DIGITS.slice(1).map((d): Cord => [[27.4, d.joints[0][1] * 0.28, -1.28], [d.joints[0][0] - 0.5, d.joints[0][1], -0.86], 0.4, 0.5]),
+  [[20, 0.0, 2.35], [26.4, 0.05, 1.82], 0.3, 0.55], // palmaris longus
+  [[20, 1.15, 2.15], [26.4, 1.3, 1.62], 0.32, 0.55], // flexor carpi radialis
+  [[21, -2.3, 1.42], [26.6, -2.2, 1.12], 0.34, 0.55], // flexor carpi ulnaris
+  [[-4.5, 0.5, 3.6], [1.2, 0.9, 2.6], 0.5, 0.8], // biceps tendon
+];
+
+/** Hollows pressed into the surface. */
+const HOLLOWS: Ball[] = [
+  [[2.3, 0.9, 5.2], 2.0, 1.1], // cubital fossa, beside brachioradialis
+  [[2.6, -1.3, 5.15], 1.8, 1.1], // cubital fossa, medial to the biceps tendon
+  [[32.3, 0.4, 3.1], 2.0, 0.9], // hollow of the palm
+];
+
+/** The primitives that can influence a given part of the limb. */
+interface Active {
+  balls: Ball[];
+  cords: Cord[];
+  hollows: Ball[];
+  cones: Cone[][];
+}
+
+const EVERYTHING: Active = { balls: LANDMARKS, cords: RIDGES, hollows: HOLLOWS, cones: DIGIT_CONES };
+
+/** Only what can reach the plane at x: the grid is filled slice by slice, so most primitives drop out. */
+function activeAt(x: number): Active {
+  return {
+    balls: LANDMARKS.filter(([c, r, k]) => Math.abs(x - c[0]) <= r + k),
+    cords: RIDGES.filter(([a, b, r, k]) => x >= Math.min(a[0], b[0]) - r - k && x <= Math.max(a[0], b[0]) + r + k),
+    hollows: HOLLOWS.filter(([c, r, k]) => Math.abs(x - c[0]) <= r + k),
+    cones: DIGIT_CONES.map((cones) => cones.filter((c) => x >= c.min[0] && x <= c.max[0])),
+  };
+}
+
+function evaluate(x: number, y: number, z: number, act: Active): number {
   let d = armSDF(x, y, z);
-  for (const [c, r, k] of LANDMARKS) {
-    const dx = x - c[0];
-    const reach = r + k;
-    if (dx > reach || dx < -reach) continue;
-    const dd = Math.hypot(dx, y - c[1], z - c[2]) - r;
+  // Nothing added to the arm reaches further than this from the loft.
+  if (x < 26 && (d > 2.4 || d < -3.2)) return d;
+  for (const [c, r, k] of act.balls) {
+    const dd = Math.hypot(x - c[0], y - c[1], z - c[2]) - r;
     if (dd < d + k) d = smin(d, dd, k);
+  }
+  for (const [a, b, r, k] of act.cords) {
+    const abx = b[0] - a[0], aby = b[1] - a[1], abz = b[2] - a[2];
+    const t = Math.min(Math.max(((x - a[0]) * abx + (y - a[1]) * aby + (z - a[2]) * abz) / (abx * abx + aby * aby + abz * abz), 0), 1);
+    const dd = Math.hypot(x - a[0] - abx * t, y - a[1] - aby * t, z - a[2] - abz * t) - r;
+    if (dd < d + k) d = smin(d, dd, k);
+  }
+  for (const [c, r, k] of act.hollows) {
+    // Carving is a smooth maximum of the limb and the inside of the sphere.
+    const inside = r - Math.hypot(x - c[0], y - c[1], z - c[2]);
+    if (inside > d - k) d = -smin(-d, -inside, k);
   }
   if (x < 26) return d;
   let digits = 1e9;
-  for (const cones of DIGIT_CONES) {
+  for (let n = 0; n < act.cones.length; n++) {
     let dd = 1e9;
-    for (const c of cones) {
-      if (x < c.min[0] || x > c.max[0] || y < c.min[1] || y > c.max[1] || z < c.min[2] || z > c.max[2]) continue;
-      // Fingers are a little wider than they are thick; the thumb (first digit) stays round.
+    for (const c of act.cones[n]) {
+      if (y < c.min[1] || y > c.max[1] || z < c.min[2] || z > c.max[2] || x < c.min[0] || x > c.max[0]) continue;
+      // Fingers are a little wider than they are thick; the thumb stays round.
       const zc = (c.az + c.bz) / 2;
-      dd = smin(dd, roundCone(c, x, y, cones === DIGIT_CONES[0] ? z : zc + (z - zc) * FINGER_FLATTEN), 0.25);
+      dd = smin(dd, roundCone(c, x, y, n === 0 ? z : zc + (z - zc) * FINGER_FLATTEN), 0.25);
     }
     if (dd < digits) digits = dd;
   }
   if (digits < 1e8) d = smin(d, digits, BLEND);
   return d;
+}
+
+/** Signed distance (cm) to the skin surface: negative inside the limb. */
+export function skinSDF(x: number, y: number, z: number): number {
+  return evaluate(x, y, z, EVERYTHING);
 }
 
 const E = 0.04;
@@ -290,18 +341,22 @@ export function onLimb(x: number, thetaDeg: number, depth: number): Vec3 {
   return projectToDepth([x, cy * lo, cz * lo], depth);
 }
 
-/** Point beneath the dorsal (posterior) skin of the hand at (x, y). */
+/** Point beneath the dorsal (posterior) skin of the hand or a finger at (x, y). */
 export function onDorsum(x: number, y: number, depth: number): Vec3 {
-  const z0 = 0.25;
-  if (skinSDF(x, y, z0) > 0) return [x, y, 0];
-  let lo = 0;
-  let hi = 4;
-  for (let i = 0; i < 26; i++) {
+  // Fingers curl toward the palm, so look down through the hand for where it starts and ends.
+  const step = 0.08;
+  let z = 5;
+  while (z > -4 && skinSDF(x, y, z) > 0) z -= step;
+  if (z <= -4) return [x, y, 0];
+  while (z > -4 && skinSDF(x, y, z) <= 0) z -= step;
+  let lo = z + step;
+  let hi = z;
+  for (let i = 0; i < 20; i++) {
     const mid = (lo + hi) / 2;
-    if (skinSDF(x, y, z0 - mid) < 0) lo = mid;
+    if (skinSDF(x, y, mid) < 0) lo = mid;
     else hi = mid;
   }
-  return projectToDepth([x, y, z0 - lo], depth);
+  return projectToDepth([x, y, lo], depth);
 }
 
 export interface Field {
@@ -314,23 +369,22 @@ export interface Field {
 let cachedField: Field | null = null;
 
 /** Sample the skin field on a regular grid (computed once). */
-export function skinField(h = 0.12): Field {
+export function skinField(h = 0.11): Field {
   if (cachedField && cachedField.h === h) return cachedField;
-  const origin: Vec3 = [-19, -6.4, -6.2];
+  const origin: Vec3 = [X_PROXIMAL - 1, -6.4, -6.2];
   const dims: [number, number, number] = [
-    Math.ceil((47.4 - origin[0]) / h) + 1,
-    Math.ceil((9.8 - origin[1]) / h) + 1,
+    Math.ceil((48.6 - origin[0]) / h) + 1,
+    Math.ceil((9.6 - origin[1]) / h) + 1,
     Math.ceil((6.4 - origin[2]) / h) + 1,
   ];
   const [nx, ny, nz] = dims;
   const data = new Float32Array(nx * ny * nz);
   for (let i = 0; i < nx; i++) {
     const x = origin[0] + i * h;
+    const act = activeAt(x);
     for (let k = 0; k < nz; k++) {
       const z = origin[2] + k * h;
-      for (let j = 0; j < ny; j++) {
-        data[i + nx * (j + ny * k)] = skinSDF(x, origin[1] + j * h, z);
-      }
+      for (let j = 0; j < ny; j++) data[i + nx * (j + ny * k)] = evaluate(x, origin[1] + j * h, z, act);
     }
   }
   cachedField = { data, dims, origin, h };
@@ -343,7 +397,10 @@ const CUBE_EDGES: ReadonlyArray<readonly [number, number]> = [
   [0, 4], [1, 5], [2, 6], [3, 7],
 ];
 
-/** Naive surface nets: extract the iso-surface `field = iso` as an indexed triangle mesh. */
+/**
+ * Naive surface nets: extract the iso-surface `field = iso` as an indexed triangle mesh.
+ * With `skinNormals`, normals come from the analytic skin field rather than the mesh.
+ */
 export function surfaceNets(f: Field, iso: number, skinNormals = true) {
   const [nx, ny, nz] = f.dims;
   const { data, origin, h } = f;
@@ -387,8 +444,7 @@ export function surfaceNets(f: Field, iso: number, skinNormals = true) {
   for (let k = 1; k < nz - 1; k++)
     for (let j = 1; j < ny - 1; j++)
       for (let i = 1; i < nx - 1; i++) {
-        const v0 = at(i, j, k);
-        const inside = v0 < 0;
+        const inside = at(i, j, k) < 0;
         if (inside !== at(i + 1, j, k) < 0)
           quad(cellAt(i, j - 1, k - 1), cellAt(i, j, k - 1), cellAt(i, j, k), cellAt(i, j - 1, k), !inside);
         if (inside !== at(i, j + 1, k) < 0)

@@ -32,6 +32,7 @@ export function useAnatomy(pattern: Pattern): Anatomy | null {
         setAnatomy((a) => a && { ...a, fat: base.fat!, fascia: base.fascia! });
         return;
       }
+      if (process.env.NODE_ENV !== "production") console.debug(`anatomy built in ${m.ms} ms`);
       if (m.skin) base.skin = unpack(m.skin);
       if (m.nails) base.nails = unpack(m.nails);
       if (m.pattern !== pattern || !base.skin || !base.nails) return;

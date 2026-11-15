@@ -196,6 +196,11 @@ function buildPart(part: Part, def: StructureDef): { g: THREE.BufferGeometry; pa
     for (const v of part.valves ?? []) bulge = Math.max(bulge, Math.exp(-(((t - v) / 0.018) ** 2)));
     return radiusAt(part.r, t) * (1 + 0.18 * bulge);
   });
+  if (def.layer === "veins" || def.layer === "arteries") {
+    // Vessel walls are never perfectly even.
+    const seed = pts[0][0] * 1.7 + pts[0][1] * 3.1;
+    for (let i = 0; i < radii.length; i++) radii[i] *= 1 + 0.055 * Math.sin(i * 0.43 + seed) * Math.sin(i * 0.17 + seed * 2.3);
+  }
   if (def.layer === "veins") {
     // A distended vein must still sit under the skin, so deepen it where it would otherwise break the surface.
     for (let i = 0; i < pts.length; i++) {
@@ -350,13 +355,28 @@ export function buildNails(): THREE.BufferGeometry {
     const axis = b.clone().sub(a);
     const len = axis.length();
     axis.normalize();
-    const back = new THREE.Vector3(0, 0, -1).addScaledVector(axis, axis.z).normalize();
+    const back = (i === 0 ? new THREE.Vector3(0, 0.72, -0.7) : new THREE.Vector3(0, 0, -1)).clone();
+    back.addScaledVector(axis, -back.dot(axis)).normalize();
     const side = new THREE.Vector3().crossVectors(back, axis);
     const r = d.radii[2] + (d.radii[3] - d.radii[2]) * 0.6;
     const thick = r * 0.32;
     const surface = i === 0 ? r : r / FINGER_FLATTEN;
     const g = new THREE.SphereGeometry(1, 48, 28);
     g.deleteAttribute("uv");
+    // Pink nail bed, a paler lunula at the root and a white free edge at the tip.
+    const local = g.getAttribute("position");
+    const col = new Float32Array(local.count * 3);
+    const step = (a: number, b: number, v: number) => {
+      const t = Math.min(Math.max((v - a) / (b - a), 0), 1);
+      return t * t * (3 - 2 * t);
+    };
+    for (let v = 0; v < local.count; v++) {
+      const edge = step(0.6, 0.76, local.getX(v));
+      const lunula = 1 - step(0.34, 0.5, Math.hypot(local.getX(v) + 1.05, local.getY(v) * 0.85));
+      const bed = [1, 0.82, 0.8], pale = [1, 0.95, 0.93];
+      for (let c = 0; c < 3; c++) col[v * 3 + c] = (bed[c] + (pale[c] - bed[c]) * lunula) * (1 - edge) + edge;
+    }
+    g.setAttribute("color", new THREE.BufferAttribute(col, 3));
     g.scale(len * 0.42 + 0.12, r * 0.74, thick);
     g.applyMatrix4(new THREE.Matrix4().makeBasis(axis, side, back));
     const c = a.addScaledVector(axis, len * 0.62).addScaledVector(back, surface - thick + 0.035);
@@ -390,6 +410,29 @@ export function segDist2(p: Vec3, a: Vec3, b: Vec3): [number, number] {
   const t = l2 > 0 ? Math.min(Math.max((apx * abx + apy * aby + apz * abz) / l2, 0), 1) : 0;
   const dx = apx - abx * t, dy = apy - aby * t, dz = apz - abz * t;
   return [dx * dx + dy * dy + dz * dz, t];
+}
+
+/**
+ * Ambient occlusion of the skin (1 open, lower in folds), from the distance
+ * field itself: where the surface is concave, the field grows more slowly along
+ * the normal than the distance travelled. Darkens web spaces, creases and
+ * hollows the way soft light does.
+ */
+export function skinAO(g: THREE.BufferGeometry): Float32Array {
+  const pos = g.getAttribute("position") as THREE.BufferAttribute;
+  const nor = g.getAttribute("normal") as THREE.BufferAttribute;
+  const out = new Float32Array(pos.count);
+  const H = [0.15, 0.4, 0.8, 1.4, 2.2];
+  const W = [0.34, 0.26, 0.18, 0.13, 0.09];
+  for (let i = 0; i < pos.count; i++) {
+    let occluded = 0;
+    for (let k = 0; k < H.length; k++) {
+      const d = skinSDF(pos.getX(i) + nor.getX(i) * H[k], pos.getY(i) + nor.getY(i) * H[k], pos.getZ(i) + nor.getZ(i) * H[k]);
+      occluded += W[k] * Math.max(0, 1 - d / H[k]);
+    }
+    out[i] = Math.min(1, Math.max(0.25, 1 - 1.5 * occluded));
+  }
+  return out;
 }
 
 /**

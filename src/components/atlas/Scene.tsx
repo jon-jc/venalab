@@ -197,7 +197,7 @@ function Tourniquet() {
     const seg = 72;
     const pos: number[] = [];
     const idx: number[] = [];
-    for (const x of [-9.7, -7.5])
+    for (const x of [-10.2, -7.8])
       for (let j = 0; j < seg; j++) pos.push(...onLimb(x, (j / seg) * 360, -0.09));
     for (let j = 0; j < seg; j++) {
       const j1 = (j + 1) % seg;
@@ -391,7 +391,8 @@ function Arm() {
   useEffect(() => {
     const tone = new THREE.Color(TONES[useAtlas.getState().tone].color);
     skinUniforms.uPalm.value.copy(nir ? new THREE.Color("#2fbf86") : tone.clone().lerp(new THREE.Color("#f4c6b6"), 0.55));
-    skinUniforms.uRim.value.set(nir ? "#000000" : "#5a1a12");
+    skinUniforms.uRim.value.set(nir ? "#000000" : "#34100b");
+    skinUniforms.uScatter.value.setRGB(nir ? 0 : 0.3, nir ? 0 : 0.06, nir ? 0 : 0.035);
   }, [tone, nir]);
   useEffect(() => {
     useAtlas.getState().set({ built });
@@ -507,7 +508,8 @@ function Arm() {
         <mesh geometry={anatomy.nails} renderOrder={ORDER.skin} raycast={noRaycast} receiveShadow>
           <meshPhysicalMaterial
             key={`${layers.skin < 1}`}
-            color={new THREE.Color(TONES[tone].color).lerp(new THREE.Color("#f7d6cd"), 0.62)}
+            vertexColors
+            color={new THREE.Color(TONES[tone].color).lerp(new THREE.Color("#fbe7e0"), 0.72)}
             roughness={0.22}
             clearcoat={1}
             clearcoatRoughness={0.12}
@@ -615,7 +617,7 @@ function Ground() {
 export default function Scene() {
   return (
     <Canvas
-      camera={{ position: [1, 10, 128], fov: 30, near: 0.5, far: 800 }}
+      camera={{ position: [-0.5, 12, 132], fov: 30, near: 0.5, far: 800 }}
       dpr={[1, 2]}
       shadows
       gl={{ antialias: true, alpha: true }}

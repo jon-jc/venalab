@@ -58,9 +58,9 @@ export const RATING_COLOR: Record<Rating, string> = {
 // ───────────────────────────── Veins ─────────────────────────────
 
 const CEPHALIC_FOREARM: Pt[] = [D(29.6, 3.3), S(27, -48), S(23, -20), S(18, 15), S(12, 42), S(6, 56), S(3, 60)];
-const CEPHALIC_ARM: Pt[] = [S(3, 60), S(0, 58), S(-5, 52), S(-12, 48), S(-18.4, 50)];
+const CEPHALIC_ARM: Pt[] = [S(3, 60), S(0, 58), S(-5, 52), S(-12, 48), S(-21.4, 50)];
 const BASILIC_FOREARM: Pt[] = [D(29.8, -3.0), S(27, 222), S(22, 212), S(15, 195), S(9, 170), S(4, 148), S(0, 138), S(-3, 135)];
-const BASILIC_ARM: Pt[] = [S(-3, 135), S(-6, 138, 0.5), S(-9, 142, 1.0), S(-13, 148, 1.6), S(-18.4, 150, 1.9)];
+const BASILIC_ARM: Pt[] = [S(-3, 135), S(-6, 138, 0.5), S(-9, 142, 1.0), S(-13, 148, 1.6), S(-21.4, 150, 1.9)];
 
 /** Dorsal points over the 2nd, 3rd and 4th web spaces, where digital veins unite. */
 const WEBS: Vec3[] = [
@@ -220,8 +220,8 @@ const VEINS: StructureDef[] = [
     layer: "veins",
     rating: "avoid",
     parts: [
-      tube([D(35.3, 7.95), D(32.8, 6.45), D(30.7, 4.7), D(29.6, 3.3)], 0.06),
-      tube([D(34.5, 6.55), D(32.2, 5.05), D(30.4, 3.95), D(29.6, 3.3)], 0.06),
+      digitalVein(0, 1, [D(30.4, 3.9), D(29.6, 3.3)]),
+      digitalVein(0, -1, [D(30.0, 3.3), D(29.6, 3.3)]),
       digitalVein(1, 1, [D(34.3, 3.8), D(31.9, 3.65), D(29.6, 3.3)]),
       digitalVein(1, -1, [D(...WEBS[0])]),
       digitalVein(2, 1, [D(...WEBS[0])]),
@@ -243,8 +243,8 @@ VEINS.push({
   layer: "veins",
   color: "#2f3766",
   parts: [
-    tube([P(-18.4, -2.38, 0.92), P(-9, -2.08, 1.52), P(-3, -1.08, 2.32), P(0.5, -0.38, 2.36), P(1.8, -0.1, 1.85)], 0.15),
-    tube([P(-18.4, -2.92, 0.5), P(-9, -2.62, 1.08), P(-3, -1.62, 1.88), P(0.5, -0.95, 1.92), P(1.8, -0.65, 1.45)], 0.15),
+    tube([P(-21.4, -2.38, 0.92), P(-9, -2.08, 1.52), P(-3, -1.08, 2.32), P(0.5, -0.38, 2.36), P(1.8, -0.1, 1.85)], 0.15),
+    tube([P(-21.4, -2.92, 0.5), P(-9, -2.62, 1.08), P(-3, -1.62, 1.88), P(0.5, -0.95, 1.92), P(1.8, -0.65, 1.45)], 0.15),
     tube([S(0.3, 100, 0.34), P(0.45, -0.42, 2.72), P(0.5, -0.38, 2.36)], 0.09),
   ],
   summary:
@@ -262,7 +262,7 @@ const ARTERIES: StructureDef[] = [
     layer: "arteries",
     rating: "hazard",
     label: true,
-    parts: [tube([P(-18.4, -2.7, 0.8), P(-9, -2.4, 1.4), P(-3, -1.4, 2.2), P(0.5, -0.7, 2.25), P(2, -0.4, 1.7)], 0.28)],
+    parts: [tube([P(-21.4, -2.7, 0.8), P(-9, -2.4, 1.4), P(-3, -1.4, 2.2), P(0.5, -0.7, 2.25), P(2, -0.4, 1.7)], 0.28)],
     summary:
       "Main artery of the arm. Descends on the medial side of biceps and enters the cubital fossa medial to the biceps tendon, deep to the bicipital aponeurosis, where it divides into the radial and ulnar arteries.",
     clinical:
@@ -307,7 +307,7 @@ const NERVES: StructureDef[] = [
     layer: "nerves",
     rating: "hazard",
     label: true,
-    parts: [tube([P(-18.4, -3.0, 0.6), P(-9, -2.8, 1.2), P(-3, -1.95, 2.05), P(0.5, -1.3, 2.0), P(4, -0.6, 1.0), P(14, 0, 0.6), P(23, 0.1, 1.0), P(26.5, 0.1, 1.0), P(29.5, 0.2, 0.7)], 0.16)],
+    parts: [tube([P(-21.4, -3.0, 0.6), P(-9, -2.8, 1.2), P(-3, -1.95, 2.05), P(0.5, -1.3, 2.0), P(4, -0.6, 1.0), P(14, 0, 0.6), P(23, 0.1, 1.0), P(26.5, 0.1, 1.0), P(29.5, 0.2, 0.7)], 0.16)],
     summary:
       "Travels with the brachial artery, lying medial to it in the cubital fossa, then passes between the heads of pronator teres and down the centre of the forearm to the carpal tunnel.",
     clinical:
@@ -358,7 +358,7 @@ const NERVES: StructureDef[] = [
     name: "Radial nerve",
     layer: "nerves",
     parts: [
-      tube([P(-18.4, 1.2, -2.0), P(-11, 2.9, -1.2), P(-5, 2.9, 0.3), P(-0.5, 2.35, 0.9), P(2, 2.2, 0.8)], 0.15),
+      tube([P(-21.4, 1.2, -2.0), P(-11, 2.9, -1.2), P(-5, 2.9, 0.3), P(-0.5, 2.35, 0.9), P(2, 2.2, 0.8)], 0.15),
       tube([P(2, 2.2, 0.8), P(4.5, 2.3, -0.6), P(10, 1.0, -1.4), P(20, 0.2, -1.0)], 0.09),
     ],
     summary:
@@ -370,7 +370,7 @@ const NERVES: StructureDef[] = [
     id: "ulnar-nerve",
     name: "Ulnar nerve",
     layer: "nerves",
-    parts: [tube([P(-18.4, -3.1, -0.4), P(-8, -3.2, -1.1), P(-0.5, -3.5, -1.9), P(4, -3.0, -0.6), P(14, -2.5, 0.4), P(25, -2.4, 0.9), P(28.5, -2.2, 0.75)], 0.14)],
+    parts: [tube([P(-21.4, -3.1, -0.4), P(-8, -3.2, -1.1), P(-0.5, -3.5, -1.9), P(4, -3.0, -0.6), P(14, -2.5, 0.4), P(25, -2.4, 0.9), P(28.5, -2.2, 0.75)], 0.14)],
     summary:
       "Passes behind the medial epicondyle (the 'funny bone'), then runs down the ulnar forearm beside the ulnar artery to the hand.",
     clinical: "Deep to the usual venipuncture sites, but superficial at the palmar wrist — another reason that area is never used.",
@@ -393,7 +393,7 @@ const MUSCLES: StructureDef[] = [
     color: M1,
     rating: "landmark",
     label: true,
-    parts: [tube([P(-18.6, 0.3, 2.2), P(-10, 0.3, 2.6), P(-3, 0.5, 2.1), P(1.6, 1.1, 0.7)], [[0, 1.9], [0.45, 2.4], [0.72, 1.5], [0.86, 0.5], [1, 0.3]], 0.75)],
+    parts: [tube([P(-21.6, 0.3, 2.2), P(-10, 0.3, 2.6), P(-3, 0.5, 2.1), P(1.6, 1.1, 0.7)], [[0, 1.9], [0.45, 2.4], [0.72, 1.5], [0.86, 0.5], [1, 0.3]], 0.75)],
     summary: "Flexor of the elbow and supinator of the forearm. Its tendon is the cord felt in the centre of the cubital fossa when the elbow is flexed.",
     clinical:
       "The biceps tendon is the key landmark of the fossa: the brachial artery and median nerve lie just medial to it, the cephalic system lateral to it. A firm, non-bouncy cord under your finger is tendon, not vein.",
@@ -410,7 +410,7 @@ const MUSCLES: StructureDef[] = [
       "Separates the median cubital vein (above) from the brachial artery and median nerve (below). A needle angled too steeply or advanced too far passes straight through it.",
   },
   { id: "brachialis", name: "Brachialis", layer: "muscles", color: M2, parts: [tube([P(-12, 0.6, 0.8), P(-4, 0.2, 0.9), P(1.5, -0.9, -0.2)], [[0, 1.2], [0.5, 2.0], [1, 0.5]], 0.5)], summary: "Deep to biceps; the main flexor of the elbow.", clinical: "Forms part of the floor of the cubital fossa." },
-  { id: "triceps", name: "Triceps brachii", layer: "muscles", color: M2, parts: [tube([P(-18.6, 0, -2.6), P(-9, 0, -2.8), P(-2.2, -0.6, -2.6)], [[0, 2.6], [0.5, 2.8], [0.85, 1.6], [1, 0.8]], 0.6)], summary: "Extensor of the elbow, filling the posterior compartment of the arm.", clinical: "Not relevant to routine venous access." },
+  { id: "triceps", name: "Triceps brachii", layer: "muscles", color: M2, parts: [tube([P(-21.6, 0, -2.6), P(-9, 0, -2.8), P(-2.2, -0.6, -2.6)], [[0, 2.6], [0.5, 2.8], [0.85, 1.6], [1, 0.8]], 0.6)], summary: "Extensor of the elbow, filling the posterior compartment of the arm.", clinical: "Not relevant to routine venous access." },
   { id: "brachioradialis", name: "Brachioradialis", layer: "muscles", color: M3, rating: "landmark", parts: [tube([P(-5, 2.6, 0.2), P(3, 3.2, 1.2), P(12, 2.9, 1.0), P(24.5, 2.4, 0.4)], [[0, 0.6], [0.3, 1.25], [0.55, 0.8], [0.7, 0.3], [1, 0.2]], 0.7)], summary: "Forms the lateral border of the cubital fossa and the fleshy radial margin of the forearm.", clinical: "The cephalic vein runs along its surface; the radial artery lies beneath its medial edge." },
   { id: "pronator-teres", name: "Pronator teres", layer: "muscles", color: M1, rating: "landmark", parts: [tube([P(-0.8, -2.8, 0.4), P(4, -0.6, 1.3), P(10, 1.6, 0.6)], [[0, 0.6], [0.5, 0.9], [1, 0.3]], 0.6)], summary: "Forms the medial border of the cubital fossa.", clinical: "The median nerve passes between its two heads as it leaves the fossa." },
   { id: "fcr", name: "Flexor carpi radialis", layer: "muscles", color: M3, parts: [tube([P(-0.6, -2.9, 0.6), P(8, -0.4, 1.9), P(17, 0.9, 1.5), P(26.5, 1.3, 0.9)], [[0, 0.5], [0.3, 0.95], [0.55, 0.55], [0.7, 0.22], [1, 0.2]])], summary: "Wrist flexor; its tendon is prominent at the radial side of the palmar wrist.", clinical: "The radial pulse is felt just lateral to its tendon." },
@@ -446,8 +446,8 @@ const MUSCLES: StructureDef[] = [
     color: TENDON,
     rating: "landmark",
     parts: [
-      tube([P(22, 0.4, -1.4), P(27.2, 1.7, -1.0), P(30.6, 4.1, 0.0), P(34.7, 7.1, 0.55)], 0.13, 0.5),
-      tube([P(20, 2.3, -1.0), P(26.4, 3.0, -0.1), P(29.2, 3.7, 0.55), P(32.1, 5.7, 0.6)], 0.15, 0.5),
+      tube([P(22, 0.4, -1.4), P(27.2, 1.7, -1.0), P(30.4, 4.0, 0.9), P(34.2, 6.4, 2.1)], 0.13, 0.5),
+      tube([P(20, 2.3, -1.0), P(26.4, 3.0, -0.1), P(28.8, 3.5, 1.0), P(31.4, 4.9, 1.7)], 0.15, 0.5),
     ],
     summary:
       "Extensor pollicis longus (ulnar border) and abductor pollicis longus with extensor pollicis brevis (radial border) outline the hollow at the base of the thumb.",
@@ -487,7 +487,7 @@ const BONES: StructureDef[] = [
     color: BONE,
     rating: "landmark",
     parts: [
-      tube([P(-18.6, 0.3, -0.5), P(-9, 0.1, -0.5), P(-1, 0, -0.7)], [[0, 1.05], [0.5, 0.95], [0.85, 1.3], [1, 1.5]]),
+      tube([P(-21.6, 0.3, -0.5), P(-9, 0.1, -0.5), P(-1, 0, -0.7)], [[0, 1.05], [0.5, 0.95], [0.85, 1.3], [1, 1.5]]),
       blob([-0.9, -3.0, -1.0], [1.2, 1.0, 0.9]),
       blob([-0.7, 2.6, -0.9], [1.1, 0.9, 0.9]),
       blob([0, -1.0, -0.6], [1.0, 1.2, 1.0]),
@@ -568,6 +568,113 @@ const BONES: StructureDef[] = [
     clinical: "For capillary sampling, puncture the palmar pulp of the 3rd or 4th finger slightly off-centre, across the fingerprint ridges, and no deeper than 2.0 mm.",
   },
 ];
+
+// ─────────────────────── Finer detail ───────────────────────
+
+/** A point beside a digit: `u` along phalanx k, offset sideways and toward the palm in finger radii. */
+const beside = (digit: number, k: number, u: number, side: number, palmar: number): Pt => {
+  const j = DIGITS[digit].joints;
+  const r = DIGITS[digit].radii[k];
+  const a = j[k];
+  const b = j[Math.min(k + 1, 3)];
+  return P(a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u + side * r, a[2] + (b[2] - a[2]) * u + palmar * r);
+};
+const FINGERS = [1, 2, 3, 4];
+const SIDES = [1, -1];
+
+VEINS.push({
+  id: "tributaries",
+  name: "Superficial tributaries",
+  layer: "veins",
+  parts: [
+    tube([S(20, 62, 0.22), S(16, 76, 0.22), S(12, 92, 0.26)], [[0, 0.045], [1, 0.075]]),
+    tube([S(21, 130, 0.22), S(17, 114, 0.22), S(13.5, 99, 0.24), S(12, 92, 0.26)], [[0, 0.045], [1, 0.075]]),
+    tube([S(14.5, 150, 0.22), S(11.5, 160, 0.24), S(9, 170, 0.28)], [[0, 0.045], [1, 0.08]]),
+    tube([S(10.5, 18, 0.22), S(8, 36, 0.24), S(6, 56, 0.28)], [[0, 0.045], [1, 0.08]]),
+    tube([S(-5.5, 96, 0.24), S(-8, 76, 0.24), S(-12, 48, 0.3)], [[0, 0.05], [1, 0.08]]),
+    tube([S(-5.5, 108, 0.24), S(-4.6, 124, 0.26), S(-3, 135, 0.3)], [[0, 0.05], [1, 0.08]]),
+    tube([S(22.5, -92, 0.2), S(19, -72, 0.22), S(17, -50, 0.26)], [[0, 0.045], [1, 0.075]]),
+    tube([S(25.5, 262, 0.2), S(23.6, 236, 0.22), S(22, 212, 0.26)], [[0, 0.045], [1, 0.075]]),
+    tube([S(8.5, 128, 0.22), S(6, 140, 0.24), S(4, 148, 0.28)], [[0, 0.045], [1, 0.075]]),
+  ],
+  summary:
+    "Small unnamed veins that drain the skin and subcutaneous tissue into the main trunks. Their number and position differ in every arm.",
+  clinical:
+    "Too small to draw from, but worth knowing: where a tributary joins, the main vein usually has a valve just beyond it. Puncture a straight stretch between junctions.",
+});
+
+ARTERIES.push({
+  id: "digital-arteries",
+  name: "Palmar digital arteries",
+  layer: "arteries",
+  parts: [
+    ...FINGERS.flatMap((f) =>
+      SIDES.map((s) => tube([P(32.2, DIGITS[f].joints[0][1] * 0.62, 0.75), beside(f, 0, 0.12, s * 0.55, 0.3), beside(f, 1, 0, s * 0.55, 0.3), beside(f, 2, 0, s * 0.5, 0.3), beside(f, 2, 0.72, s * 0.35, 0.3)], 0.045)),
+    ),
+    ...SIDES.map((s) => tube([P(31.2, 2.0, 0.75), beside(0, 1, 0.1, s * 0.5, 0.3), beside(0, 2, 0, s * 0.5, 0.3), beside(0, 2, 0.7, s * 0.35, 0.3)], 0.05)),
+  ],
+  summary: "Branches of the superficial palmar arch that run along both sides of every finger to the fingertip.",
+  clinical:
+    "The reason a capillary puncture goes into the pulp slightly off-centre, never the side or the very tip of the finger: the pulp has a rich capillary bed, while the sides carry these arteries and their nerves.",
+});
+
+NERVES.push({
+  id: "digital-nerves",
+  name: "Palmar digital nerves",
+  layer: "nerves",
+  parts: [
+    ...FINGERS.flatMap((f) =>
+      SIDES.map((s) => {
+        const ulnar = f === 4 || (f === 3 && s === -1);
+        return tube([ulnar ? P(28.5, -2.2, 0.75) : P(29.5, 0.2, 0.7), P(32.4, DIGITS[f].joints[0][1] * 0.66 + s * 0.2, 0.6), beside(f, 0, 0.12, s * 0.7, 0.12), beside(f, 1, 0, s * 0.7, 0.12), beside(f, 2, 0, s * 0.62, 0.12), beside(f, 2, 0.7, s * 0.45, 0.12)], 0.035);
+      }),
+    ),
+    ...SIDES.map((s) => tube([P(29.5, 0.2, 0.7), P(30.6, 2.4, 0.85), beside(0, 1, 0.1, s * 0.66, 0.12), beside(0, 2, 0, s * 0.62, 0.12), beside(0, 2, 0.7, s * 0.45, 0.12)], 0.035)),
+  ],
+  summary:
+    "Sensory branches to the fingers. The median nerve supplies the thumb, index, middle and the radial half of the ring finger; the ulnar nerve supplies the rest.",
+  clinical: "They make the fingertips the most sensitive skin on the limb — one reason hand and finger punctures hurt more than antecubital ones.",
+});
+
+MUSCLES.push(
+  {
+    id: "flexor-tendons",
+    name: "Flexor tendons of the fingers",
+    layer: "muscles",
+    color: TENDON,
+    parts: [
+      ...FINGERS.map((f) => {
+        const y = DIGITS[f].joints[0][1];
+        return tube([P(24, y * 0.15, 0.75), P(27.6, y * 0.22, 0.8), P(31.5, y * 0.72, 0.6), beside(f, 0, 0, 0, 0.45), beside(f, 1, 0, 0, 0.45), beside(f, 2, 0, 0, 0.4), beside(f, 2, 0.6, 0, 0.35)], 0.14, 0.55);
+      }),
+      tube([P(27, 1.5, 0.6), P(29.5, 2.6, 0.9), beside(0, 1, 0, 0, 0.4), beside(0, 2, 0, 0, 0.4), beside(0, 2, 0.6, 0, 0.35)], 0.13, 0.55),
+    ],
+    summary: "Tendons of the finger flexors, which pass through the carpal tunnel and run along the palmar side of each finger.",
+    clinical: "With the median nerve, they fill the carpal tunnel just beneath the palmar wrist — part of why that surface is never punctured.",
+  },
+  {
+    id: "retinacula",
+    name: "Flexor & extensor retinacula",
+    layer: "muscles",
+    color: TENDON,
+    rating: "landmark",
+    parts: [
+      tube([P(27.6, -2.1, 1.0), P(27.6, 0, 1.2), P(27.6, 2.2, 1.0)], 0.95, 0.09),
+      tube([P(25.8, -2.4, -1.0), P(25.8, 0, -1.45), P(25.8, 2.5, -0.9)], 0.95, 0.09),
+    ],
+    summary: "Strong fibrous bands that strap the tendons down at the wrist: the flexor retinaculum roofs the carpal tunnel, the extensor retinaculum holds the extensor tendons against the radius and ulna.",
+    clinical: "They mark the level of the wrist. Venipuncture sites lie well proximal to them on the forearm, or distal to the extensor retinaculum on the back of the hand.",
+  },
+  {
+    id: "interosseous-membrane",
+    name: "Interosseous membrane",
+    layer: "muscles",
+    color: "#cfc7b6",
+    parts: [tube([P(5, 0.1, -0.45), P(14, 0.05, -0.4), P(23, -0.1, -0.25)], [[0, 1.0], [0.5, 1.55], [1, 1.2]], 0.045)],
+    summary: "Sheet of fibrous tissue joining the radius and ulna along their length and separating the front of the forearm from the back.",
+    clinical: "Deep to everything a phlebotomist should ever reach.",
+  },
+);
 
 export const STRUCTURES: StructureDef[] = [...VEINS, ...ARTERIES, ...NERVES, ...MUSCLES, ...BONES];
 

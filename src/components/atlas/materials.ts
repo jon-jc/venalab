@@ -58,6 +58,8 @@ interface Recipe {
   surface: string;
   /** Runs once the shading normal is final; may add to \`totalEmissiveRadiance\`. */
   glow?: string;
+  /** May adjust \`roughnessFactor\`. */
+  finish?: string;
 }
 
 function tissue(r: Recipe) {
@@ -73,6 +75,7 @@ function tissue(r: Recipe) {
       shader.fragmentShader = shader.fragmentShader
         .replace("#include <common>", `#include <common>\n${NOISE}\n${r.fragmentHead ?? ""}`)
         .replace("#include <color_fragment>", `#include <color_fragment>\n${r.surface}`)
+        .replace("#include <roughnessmap_fragment>", `#include <roughnessmap_fragment>\n${r.finish ?? ""}`)
         .replace("#include <normal_fragment_maps>", `#include <normal_fragment_maps>\nnormal = bumpNormal(-vViewPosition, normal, relief);`)
         .replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>\n${r.glow ?? ""}`);
     },
@@ -93,7 +96,22 @@ for (const d of DIGITS) {
 }
 for (const d of DIGITS.slice(1)) CREASES.push({ at: new THREE.Vector4(d.joints[0][0] + 0.2, d.joints[0][1], -0.9, 1.15), dir: new THREE.Vector4(1, 0, 0, -1) });
 CREASES.push({ at: new THREE.Vector4(26.3, 0, 0.8, 3.7), dir: new THREE.Vector4(1, 0, 0, 1) }); // wrist
-CREASES.push({ at: new THREE.Vector4(0.2, 0, 2.4, 4.8), dir: new THREE.Vector4(1, 0, 0, 1) }); // elbow
+CREASES.push({ at: new THREE.Vector4(0.2, 0.2, 3.2, 3.1), dir: new THREE.Vector4(1, 0, 0, 1) }); // elbow
+
+/** The three main palmar creases as line segments in the plane of the palm: (x, y) → (x, y). */
+const PALM_LINES = [
+  [35.0, -3.9, 34.55, -1.0], [34.55, -1.0, 35.35, 1.7], // distal transverse crease
+  [34.2, 3.6, 33.0, 0.5], [33.0, 0.5, 31.6, -2.8], // proximal transverse crease
+  [34.0, 3.5, 31.2, 1.6], [31.2, 1.6, 28.0, 1.0], // thenar crease
+].map((l) => new THREE.Vector4(...l));
+
+/** Where blood shows through thin skin and the surface looks pinker: centre and radius. */
+const BLUSH = [
+  ...DIGITS.map((d) => new THREE.Vector4(...d.joints[3], 1.25)),
+  ...DIGITS.map((d) => new THREE.Vector4(d.joints[1][0], d.joints[1][1], d.joints[1][2] - d.radii[1] * 0.7, 0.85)),
+  ...DIGITS.slice(1).map((d) => new THREE.Vector4(d.joints[0][0] + 0.2, d.joints[0][1], -1.0, 1.0)),
+  new THREE.Vector4(-1.6, -0.7, -3.5, 2.4),
+];
 
 export const skinUniforms = {
   uBulge: live.bulge,
@@ -101,31 +119,43 @@ export const skinUniforms = {
   uPressDepth: live.pressDepth,
   uCrease: { value: CREASES.map((c) => c.at) },
   uCreaseDir: { value: CREASES.map((c) => c.dir) },
+  uPalmLine: { value: PALM_LINES },
+  uBlush: { value: BLUSH },
   /** Colour of palmar skin, which is paler and pinker than the rest. */
   uPalm: { value: new THREE.Color("#f3c4b4") },
   /** Red light scattered back out of the skin at grazing angles. */
-  uRim: { value: new THREE.Color("#5a1a12") },
+  uRim: { value: new THREE.Color("#34100b") },
+  /** Light that bleeds red through the skin around the shadow line. */
+  uScatter: { value: new THREE.Color(0.3, 0.06, 0.035) },
+  /** Direction of the key light, in model space. */
+  uKey: { value: new THREE.Vector3(20, 30, 50).normalize() },
 };
 
-/** Skin: rises over veins, dimples when pressed, and carries pores, fine lines and creases. */
+/** Skin: rises over veins, dimples when pressed, and carries pores, a lattice of fine lines, creases and blush. */
 export const skinMaterial = tissue({
   key: "skin",
   uniforms: skinUniforms,
-  vertexHead: "attribute float aVein;\nattribute vec3 aVeinGrad;\nuniform float uBulge;\nuniform vec4 uPress;\nuniform float uPressDepth;",
+  vertexHead: "attribute float aVein;\nattribute vec3 aVeinGrad;\nattribute float aAO;\nvarying float vAO;\nuniform float uBulge;\nuniform vec4 uPress;\nuniform float uPressDepth;",
   vertexNormal: /* glsl */ `
     vec3 pressOffset = position - uPress.xyz;
     float pressR2 = uPress.w * uPress.w;
     float pressed = uPressDepth * exp(-dot(pressOffset, pressOffset) / pressR2);
     vec3 slope = uBulge * aVeinGrad + 2.0 * pressed * pressOffset / pressR2;
     objectNormal = normalize(objectNormal - (slope - dot(slope, objectNormal) * objectNormal));`,
-  vertexPosition: "transformed += normalize(normal) * (uBulge * aVein - pressed);",
-  fragmentHead: `uniform vec4 uCrease[${CREASES.length}];\nuniform vec4 uCreaseDir[${CREASES.length}];\nuniform vec3 uPalm;\nuniform vec3 uRim;`,
+  vertexPosition: "vAO = aAO;\ntransformed += normalize(normal) * (uBulge * aVein - pressed);",
+  fragmentHead: `uniform vec4 uCrease[${CREASES.length}];\nuniform vec4 uCreaseDir[${CREASES.length}];\nuniform vec4 uPalmLine[${PALM_LINES.length}];\nuniform vec4 uBlush[${BLUSH.length}];\nuniform vec3 uPalm;\nuniform vec3 uRim;\nuniform vec3 uScatter;\nuniform vec3 uKey;\nvarying float vAO;`,
   surface: /* glsl */ `
     vec3 sp = vObjPos;
     vec3 sn = normalize(vObjNormal);
+    float micro = clamp(0.05 / max(length(fwidth(sp)), 1e-4) - 0.35, 0.0, 1.0);
     float mottle = fbm(sp * 0.55);
-    float pores = vnoise(sp * 30.0);
-    float lines = fbm(sp * vec3(26.0, 7.0, 7.0));
+    float pores = mix(0.5, vnoise(sp * 30.0), micro);
+    float lines = mix(0.5, fbm(sp * vec3(26.0, 7.0, 7.0)), micro);
+    // Skin is scored by two families of fine furrows that cross to leave tiny diamonds.
+    float warp = 3.0 * vnoise(sp * 5.0);
+    float furrowA = abs(sin(dot(sp, vec3(19.0, 15.0, 15.0)) + warp));
+    float furrowB = abs(sin(dot(sp, vec3(-19.0, 15.0, 15.0)) + warp * 1.3 + 2.0));
+    float lattice = mix(0.6, sqrt(min(furrowA, furrowB)), micro);
     float crease = 0.0;
     for (int i = 0; i < ${CREASES.length}; i++) {
       vec3 q = sp - uCrease[i].xyz;
@@ -139,11 +169,34 @@ export const skinMaterial = tissue({
       float wrinkles = (0.5 + 0.5 * cos(d * 40.0)) * exp(-d * d / 0.07);
       crease = max(crease, reach * onFace * mix(fold, 0.7 * wrinkles, face == 0.0 ? back : step(face, 0.0)));
     }
-    float relief = 0.006 * pores + 0.011 * lines - 0.035 * crease;
+    float palmar = smoothstep(26.8, 28.5, sp.x) * smoothstep(0.2, 0.6, sn.z);
+    float palmLine = 0.0;
+    for (int i = 0; i < ${PALM_LINES.length}; i++) {
+      vec2 pa = sp.xy - uPalmLine[i].xy;
+      vec2 ba = uPalmLine[i].zw - uPalmLine[i].xy;
+      vec2 off = pa - ba * clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+      palmLine = max(palmLine, exp(-dot(off, off) / 0.006));
+    }
+    crease = max(crease, 0.85 * palmLine * palmar);
+    float blush = 0.0;
+    for (int i = 0; i < ${BLUSH.length}; i++) {
+      vec3 q = sp - uBlush[i].xyz;
+      blush += exp(-dot(q, q) / (uBlush[i].w * uBlush[i].w));
+    }
+    blush = min(blush, 1.0);
+    float freckle = smoothstep(0.8, 0.9, vnoise(sp * 8.0)) * smoothstep(0.45, 0.8, fbm(sp * 0.7 + 3.0)) * smoothstep(0.0, 0.5, -sn.z);
+    float relief = 0.006 * pores + 0.008 * lines + 0.009 * lattice - 0.035 * crease;
     float palm = smoothstep(26.0, 29.5, sp.x) * smoothstep(-0.2, 0.45, sn.z);
     diffuseColor.rgb = mix(diffuseColor.rgb, uPalm * vColor.rgb, palm * 0.7);
-    diffuseColor.rgb *= (0.92 + 0.15 * mottle) * (0.97 + 0.06 * pores) * (1.0 - 0.24 * crease);`,
-  glow: "totalEmissiveRadiance += uRim * pow(1.0 - saturate(dot(normal, normalize(vViewPosition))), 2.6) * diffuseColor.a;",
+    diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.13, 0.86, 0.83), blush * 0.45);
+    diffuseColor.rgb *= (0.92 + 0.15 * mottle) * (0.97 + 0.06 * pores) * (1.0 - 0.24 * crease) * (1.0 - 0.2 * freckle);
+    // Folds and web spaces receive less light, and what reaches them has passed through skin, so it is warmer.
+    diffuseColor.rgb *= mix(vec3(0.58, 0.38, 0.34), vec3(1.0), vAO);`,
+  finish: "roughnessFactor = clamp(roughnessFactor * (0.8 + 0.38 * pores) * (1.0 - 0.18 * palmar), 0.18, 1.0);",
+  glow: /* glsl */ `
+    float keyLight = dot(normalize(vObjNormal), uKey);
+    float shadowLine = smoothstep(-0.5, 0.0, keyLight) * (1.0 - smoothstep(0.0, 0.55, keyLight));
+    totalEmissiveRadiance += (uRim * pow(1.0 - saturate(dot(normal, normalize(vViewPosition))), 2.6) + diffuseColor.rgb * uScatter * shadowLine * vAO) * diffuseColor.a;`,
 });
 
 // ─────────────────────── Deeper tissues ───────────────────────
