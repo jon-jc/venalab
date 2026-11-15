@@ -267,6 +267,8 @@ function Needle() {
   const fill = useRef(0);
   const seat = useRef(0);
   const swell = useRef(0);
+  /** When a demonstrated advance began, and from how far out. */
+  const advance = useRef<{ at: number; from: number } | null>(null);
   /** A grab in progress: sliding along the axis, or swinging about the site at the radius it was grabbed. */
   const drag = useRef<{ push: boolean; s0: number; d0: number; radius: number; offset: THREE.Quaternion } | null>(null);
   const [hover, setHover] = useState<"aim" | "push" | null>(null);
@@ -309,10 +311,16 @@ function Needle() {
     const goal = sim.phase === "withdraw" ? -70 : sim.depth;
     const far = Math.abs(goal - shown.current);
     // Slow and deliberate through the skin, quicker through the air.
-    const rate = sim.phase === "advancing" ? 11 : sim.phase === "withdraw" ? 60 : Math.max(22, far * 5);
-    // Travel keeps to the clock even when frames are slow, so a demonstration takes the same time on any device.
-    const step = rate * Math.min(dtRaw, 0.25);
-    shown.current = far <= step ? goal : shown.current + Math.sign(goal - shown.current) * step;
+    if (sim.phase === "advancing") {
+      // A demonstrated advance runs on the clock, 11 mm a second, so it takes the same time however slowly frames arrive.
+      advance.current ??= { at: performance.now(), from: shown.current };
+      shown.current = Math.min(goal, advance.current.from + (11 * (performance.now() - advance.current.at)) / 1000);
+    } else {
+      advance.current = null;
+      const rate = sim.phase === "withdraw" ? 60 : Math.max(22, far * 5);
+      const step = rate * Math.min(dtRaw, 0.25);
+      shown.current = far <= step ? goal : shown.current + Math.sign(goal - shown.current) * step;
+    }
     live.needle = shown.current;
     if (sim.phase === "advancing" && shown.current === goal) s.finish();
     if (sim.phase === "withdraw" && shown.current === goal) s.resetSim();
