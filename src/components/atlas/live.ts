@@ -1,5 +1,8 @@
 import * as THREE from "three";
 
+/** The model is shifted along x so that the mid-forearm sits at the world origin. */
+export const OFFSET = 14;
+
 /** Live physiological state shared by shaders and animated parts. */
 export const live = {
   /** Fractional increase in vein radius (tourniquet distension). */

@@ -10,14 +10,13 @@ import { DILATION, needleDir, palpate } from "@/lib/anatomy/sim";
 import { onLimb, skinNormal, type Vec3 } from "@/lib/anatomy/skin";
 import { LAYER_COLOR, LAYER_ORDER, type LayerId } from "@/lib/anatomy/structures";
 import { useKit } from "./kit";
-import { heartbeat, live } from "./live";
+import { heartbeat, live, OFFSET } from "./live";
 import { arteryMaterial, boneMaterial, fasciaMaterial, fatMaterial, muscleMaterial, nerveMaterial, skinMaterial, skinUniforms, veinMaterial } from "./materials";
 import { Fingerstick } from "./Fingerstick";
 import { effectiveLayers, labelEls, needleHud, TONES, useAtlas, VIEWS, type Layers } from "./store";
+import { Fingertip } from "./Tools";
 import { useAnatomy } from "./useAnatomy";
 
-/** The model is shifted so the mid-forearm sits at the world origin. */
-const OFFSET = 14;
 const ORDER: Record<LayerId, number> = { bones: 0, muscles: 1, arteries: 2, nerves: 2, fascia: 3, veins: 4, fat: 5, skin: 6 };
 const TISSUE = { veins: veinMaterial, arteries: arteryMaterial, nerves: nerveMaterial, muscles: muscleMaterial, bones: boneMaterial };
 const noRaycast = () => null;
@@ -31,6 +30,7 @@ function Physiology() {
     const target = tourniquet ? DILATION - 1 : 0;
     live.vein.value += (target - live.vein.value) * (1 - Math.exp(-Math.min(dt, 0.05) * (tourniquet ? 1.1 : 2.2)));
     live.pulse = heartbeat(clock.elapsedTime);
+    if (needleHud.el) needleHud.el.style.visibility = "hidden";
     live.artery.value = 0.085 * live.pulse;
     // The skin gives under a palpating fingertip, and tents under the needle until it punctures.
     const s = useAtlas.getState();
@@ -222,35 +222,6 @@ function Tourniquet() {
     <mesh ref={ref} geometry={geometry} renderOrder={7}>
       <meshStandardMaterial color="#2b62c4" roughness={0.65} side={THREE.DoubleSide} />
     </mesh>
-  );
-}
-
-/** A fingertip on the skin: bounces over a vein, throbs with the pulse over an artery. */
-function PalpationRing() {
-  const palp = useAtlas((s) => s.palp);
-  const active = useAtlas((s) => s.mode === "sim" && s.procedure === "venous" && (s.sim.stage === "palpate" || !!s.demo));
-  const ref = useRef<THREE.Group>(null);
-  useFrame(({ clock }) => {
-    if (!ref.current || !palp?.p || !palp.n) return;
-    const n = palp.n;
-    ref.current.position.set(palp.p[0] + n[0] * 0.06, palp.p[1] + n[1] * 0.06, palp.p[2] + n[2] * 0.06);
-    ref.current.quaternion.setFromUnitVectors(FRONT, new THREE.Vector3(n[0], n[1], n[2]));
-    const k = palp.kind === "artery" ? 1 + 0.4 * live.pulse : palp.kind === "vein" ? 1 + 0.1 * Math.sin(clock.elapsedTime * 5) : 1;
-    ref.current.scale.setScalar(k);
-  });
-  if (!active || !palp?.p) return null;
-  const color = palp.kind === "artery" ? "#ff4d57" : palp.kind === "vein" ? "#7fa2ff" : palp.kind === "tendon" ? "#efe7d6" : "#9aa7bb";
-  return (
-    <group ref={ref}>
-      <mesh renderOrder={9}>
-        <ringGeometry args={[0.5, 0.6, 40]} />
-        <meshBasicMaterial color={color} transparent opacity={0.95} depthTest={false} side={THREE.DoubleSide} />
-      </mesh>
-      <mesh renderOrder={9}>
-        <circleGeometry args={[0.5, 40]} />
-        <meshBasicMaterial color={color} transparent opacity={0.16} depthTest={false} side={THREE.DoubleSide} />
-      </mesh>
-    </group>
   );
 }
 
@@ -787,7 +758,9 @@ function Arm() {
       {mode === "sim" && procedure === "venous" && <Gauze />}
       {mode === "sim" && procedure === "capillary" && <Fingerstick />}
       {mode === "sim" && <Swab />}
-      <PalpationRing />
+      <Suspense fallback={null}>
+        <Fingertip />
+      </Suspense>
     </group>
   );
 }
