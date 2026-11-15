@@ -326,12 +326,6 @@ function Needle() {
     if (posed.current) group.current.quaternion.slerp(pose, 1 - Math.exp(-dt * 28));
     else group.current.quaternion.copy(pose);
     posed.current = true;
-    if (held && !drag.current && shown.current < -2) {
-      // Nobody's hand is perfectly still in the air; once the needle is in the arm it is braced and steady.
-      const t = clock.elapsedTime;
-      group.current.rotateX(0.004 * Math.sin(t * 6.3) + 0.002 * Math.sin(t * 13.1));
-      group.current.rotateZ(0.004 * Math.sin(t * 5.1 + 1.7));
-    }
     const L = shown.current / 10;
     group.current.position.set(sim.entry[0] + dir[0] * L, sim.entry[1] + dir[1] * L, sim.entry[2] + dir[2] * L);
 
