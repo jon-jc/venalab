@@ -5,41 +5,22 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { ContactShadows, Environment, Lightformer, OrbitControls } from "@react-three/drei";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
-import { buildShell, buildStructures, surfaceGradient, veinShade, type Built } from "@/lib/anatomy/geometry";
+import { buildNails, buildShell, buildStructures, surfaceGradient, veinShade, type Built } from "@/lib/anatomy/geometry";
 import { DILATION, needleDir, palpate } from "@/lib/anatomy/sim";
 import { onLimb, skinNormal, type Vec3 } from "@/lib/anatomy/skin";
 import { LAYER_COLOR, LAYER_ORDER, type LayerId } from "@/lib/anatomy/structures";
+import { heartbeat, live } from "./live";
+import { arteryMaterial, boneMaterial, fasciaMaterial, fatMaterial, muscleMaterial, nerveMaterial, skinMaterial, skinUniforms, veinMaterial } from "./materials";
 import { effectiveLayers, labelEls, TONES, useAtlas, VIEWS, type Layers } from "./store";
 
 /** The model is shifted so the mid-forearm sits at the world origin. */
 const OFFSET = 14;
 const ORDER: Record<LayerId, number> = { bones: 0, muscles: 1, arteries: 2, nerves: 2, fascia: 3, veins: 4, fat: 5, skin: 6 };
+const TISSUE = { veins: veinMaterial, arteries: arteryMaterial, nerves: nerveMaterial, muscles: muscleMaterial, bones: boneMaterial };
 const noRaycast = () => null;
 const meshRaycast = THREE.Mesh.prototype.raycast;
 const UP = new THREE.Vector3(0, 1, 0);
 const FRONT = new THREE.Vector3(0, 0, 1);
-
-/** Live physiological state shared by shaders and animated parts. */
-const live = {
-  /** Fractional increase in vein radius (tourniquet distension). */
-  vein: { value: 0 },
-  /** Fractional increase in artery radius (pulse wave). */
-  artery: { value: 0 },
-  /** Arterial pressure pulse, 0..1, at 72 beats per minute. */
-  pulse: 0,
-  /** Height (cm) by which the skin rises over a superficial vein. */
-  bulge: { value: 0.03 },
-  /** Where something is pressing on the skin (xyz, radius in cm) and how deep. */
-  press: { value: new THREE.Vector4(0, 0, 0, 1) },
-  pressDepth: { value: 0 },
-  /** Millimetres of needle beneath the skin right now (negative while it hovers). */
-  needle: -100,
-};
-
-function heartbeat(t: number): number {
-  const p = (t * 1.2) % 1;
-  return Math.exp(-(((p - 0.12) / 0.07) ** 2)) + 0.32 * Math.exp(-(((p - 0.36) / 0.09) ** 2));
-}
 
 function Physiology() {
   const tourniquet = useAtlas((s) => s.tourniquet);
@@ -66,34 +47,6 @@ function Physiology() {
   });
   return null;
 }
-
-/** Lets a vessel swell along its normals by a fraction of its own radius. */
-const swellShader = (uniform: { value: number }) => (shader: { uniforms: Record<string, unknown>; vertexShader: string }) => {
-  shader.uniforms.uSwell = uniform;
-  shader.vertexShader =
-    "attribute float aRadius;\nuniform float uSwell;\n" +
-    shader.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\ntransformed += normalize(objectNormal) * aRadius * uSwell;");
-};
-
-/** Raises the skin over veins and dimples it where it is pressed, re-tilting normals so the relief is lit. */
-const skinShader = (shader: { uniforms: Record<string, unknown>; vertexShader: string }) => {
-  shader.uniforms.uBulge = live.bulge;
-  shader.uniforms.uPress = live.press;
-  shader.uniforms.uPressDepth = live.pressDepth;
-  shader.vertexShader =
-    "attribute float aVein;\nattribute vec3 aVeinGrad;\nuniform float uBulge;\nuniform vec4 uPress;\nuniform float uPressDepth;\n" +
-    shader.vertexShader
-      .replace(
-        "#include <beginnormal_vertex>",
-        `#include <beginnormal_vertex>
-        vec3 pressOffset = position - uPress.xyz;
-        float pressR2 = uPress.w * uPress.w;
-        float pressed = uPressDepth * exp(-dot(pressOffset, pressOffset) / pressR2);
-        vec3 slope = uBulge * aVeinGrad + 2.0 * pressed * pressOffset / pressR2;
-        objectNormal = normalize(objectNormal - (slope - dot(slope, objectNormal) * objectNormal));`,
-      )
-      .replace("#include <begin_vertex>", "#include <begin_vertex>\ntransformed += normalize(normal) * (uBulge * aVein - pressed);");
-};
 
 const ZERO: Layers = { skin: 0, fat: 0, veins: 0, fascia: 0, nerves: 0, arteries: 0, muscles: 0, bones: 0 };
 /** Seconds after load at which each layer starts to appear, deepest first. */
@@ -144,6 +97,8 @@ function StructureMesh({ b, opacity, interactive, clip }: { b: Built; opacity: n
     <mesh
       geometry={b.geometry}
       renderOrder={ORDER[layer]}
+      castShadow={alpha >= 1}
+      receiveShadow
       raycast={interactive ? meshRaycast : noRaycast}
       onPointerOver={(e) => {
         e.stopPropagation();
@@ -160,18 +115,19 @@ function StructureMesh({ b, opacity, interactive, clip }: { b: Built; opacity: n
         set({ selected: id });
       }}
     >
-      <meshStandardMaterial
+      <meshPhysicalMaterial
         key={`${clip.clippingPlanes.length}-${layer}-${alpha < 1}`}
         color={color}
         vertexColors={muscle}
-        roughness={layer === "bones" ? 0.8 : muscle ? 0.55 : 0.32}
-        metalness={0.02}
+        roughness={layer === "bones" ? 0.72 : muscle ? 0.5 : 0.34}
+        clearcoat={layer === "bones" ? 0.05 : vessel ? 0.7 : 0.35}
+        clearcoatRoughness={0.3}
         emissive={selected ? "#35e0c2" : hovered ? "#ffffff" : "#000000"}
         emissiveIntensity={selected ? 0.5 : hovered ? 0.16 : 0}
         transparent={alpha < 1}
         opacity={alpha}
         depthWrite={alpha >= 1}
-        {...(vessel ? { onBeforeCompile: swellShader(layer === "veins" ? live.vein : live.artery), customProgramCacheKey: () => "swell" } : {})}
+        {...TISSUE[layer]}
         {...clip}
       />
     </mesh>
@@ -371,12 +327,12 @@ function Needle() {
           <cylinderGeometry args={[r, 0.004, 0.24, 12]} />
           <meshStandardMaterial color="#e3e8ef" metalness={0.95} roughness={0.2} />
         </mesh>
-        <mesh position={[0, 2.02, 0]}>
+        <mesh position={[0, 2.02, 0]} castShadow>
           <cylinderGeometry args={[r, r, 3.56, 12]} />
           <meshStandardMaterial color="#e3e8ef" metalness={0.95} roughness={0.2} />
         </mesh>
         {/* colour-coded hub with flash chamber */}
-        <mesh position={[0, 4.55, 0]}>
+        <mesh position={[0, 4.55, 0]} castShadow>
           <cylinderGeometry args={[0.3, 0.15, 1.5, 20]} />
           <meshStandardMaterial ref={flash} color={g.hub} emissive={bloodColor} emissiveIntensity={0} roughness={0.45} />
         </mesh>
@@ -398,7 +354,7 @@ function Needle() {
           <sphereGeometry args={[0.62, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2]} />
           <meshPhysicalMaterial color="#ffffff" transparent opacity={0.16} roughness={0.05} depthWrite={false} />
         </mesh>
-        <mesh position={[0, 5.95, 0]}>
+        <mesh position={[0, 5.95, 0]} castShadow>
           <cylinderGeometry args={[0.7, 0.7, 0.7, 28]} />
           <meshStandardMaterial color="#b79adf" roughness={0.6} />
         </mesh>
@@ -425,7 +381,18 @@ function Arm() {
   const [assemble] = useState(() => useAtlas.getState().mode === "explore");
   const layers = useAnimatedLayers(target, assemble);
 
-  const shells = useMemo(() => ({ skin: buildShell(0), fat: buildShell(0.035), fascia: buildShell(0.6) }), []);
+  const skin = useMemo(() => buildShell(0), []);
+  const nails = useMemo(() => buildNails(), []);
+  // The deeper shells are only meshed the first time they are shown.
+  const fat = useMemo(() => (target.fat > 0 ? buildShell(0.035) : null), [target.fat > 0]); // eslint-disable-line react-hooks/exhaustive-deps
+  const fascia = useMemo(() => (target.fascia > 0 ? buildShell(0.6) : null), [target.fascia > 0]); // eslint-disable-line react-hooks/exhaustive-deps
+  const shells = useMemo(() => ({ skin, fat, fascia }), [skin, fat, fascia]);
+
+  useEffect(() => {
+    const tone = new THREE.Color(TONES[useAtlas.getState().tone].color);
+    skinUniforms.uPalm.value.copy(nir ? new THREE.Color("#2fbf86") : tone.clone().lerp(new THREE.Color("#f4c6b6"), 0.55));
+    skinUniforms.uRim.value.set(nir ? "#000000" : "#5a1a12");
+  }, [tone, nir]);
   const built = useMemo(() => buildStructures(pattern), [pattern]);
   const shade = useMemo(() => {
     const s = veinShade(shells.skin, built);
@@ -490,10 +457,14 @@ function Arm() {
   };
 
   const shellMaterial = (id: "fat" | "fascia") => (
-    <meshStandardMaterial
+    <meshPhysicalMaterial
       key={`${clip.clippingPlanes.length}-${layers[id] < 1}`}
       color={LAYER_COLOR[id]}
-      roughness={id === "fat" ? 0.5 : 0.7}
+      roughness={id === "fat" ? 0.42 : 0.5}
+      clearcoat={id === "fat" ? 0.5 : 0.25}
+      clearcoatRoughness={0.35}
+      sheen={id === "fascia" ? 0.6 : 0}
+      {...(id === "fat" ? fatMaterial : fasciaMaterial)}
       transparent={layers[id] < 1}
       opacity={layers[id]}
       depthWrite={layers[id] >= 1}
@@ -510,6 +481,8 @@ function Arm() {
         <mesh
           geometry={shells.skin}
           renderOrder={ORDER.skin}
+          castShadow={layers.skin >= 1}
+          receiveShadow
           raycast={blocks("skin") ? meshRaycast : noRaycast}
           onPointerMove={onSkinMove}
           onPointerOver={block}
@@ -530,18 +503,31 @@ function Arm() {
             transparent={layers.skin < 1}
             opacity={layers.skin}
             depthWrite={layers.skin >= 1}
-            onBeforeCompile={skinShader}
-            customProgramCacheKey={() => "skin-relief"}
+            {...skinMaterial}
             {...clip}
           />
         </mesh>
       )}
-      {layers.fat > 0 && (
+      {layers.skin > 0.5 && !nir && (
+        <mesh geometry={nails} renderOrder={ORDER.skin} raycast={noRaycast} receiveShadow>
+          <meshPhysicalMaterial
+            key={`${layers.skin < 1}`}
+            color={new THREE.Color(TONES[tone].color).lerp(new THREE.Color("#f7d6cd"), 0.62)}
+            roughness={0.22}
+            clearcoat={1}
+            clearcoatRoughness={0.12}
+            transparent={layers.skin < 1}
+            opacity={layers.skin}
+            depthWrite={layers.skin >= 1}
+          />
+        </mesh>
+      )}
+      {layers.fat > 0 && shells.fat && (
         <mesh geometry={shells.fat} renderOrder={ORDER.fat} raycast={blocks("fat") ? meshRaycast : noRaycast} onClick={block} onPointerOver={block}>
           {shellMaterial("fat")}
         </mesh>
       )}
-      {layers.fascia > 0 && (
+      {layers.fascia > 0 && shells.fascia && (
         <mesh geometry={shells.fascia} renderOrder={ORDER.fascia} raycast={blocks("fascia") ? meshRaycast : noRaycast} onClick={block} onPointerOver={block}>
           {shellMaterial("fascia")}
         </mesh>
@@ -636,6 +622,7 @@ export default function Scene() {
     <Canvas
       camera={{ position: [1, 10, 128], fov: 30, near: 0.5, far: 800 }}
       dpr={[1, 2]}
+      shadows
       gl={{ antialias: true, alpha: true }}
       onCreated={({ gl }) => {
         gl.localClippingEnabled = true;
@@ -643,7 +630,21 @@ export default function Scene() {
       onPointerMissed={() => useAtlas.getState().set({ selected: null })}
     >
       <hemisphereLight args={["#fff4ea", "#3a2c28", 0.75]} />
-      <directionalLight position={[20, 30, 50]} intensity={1.9} color="#fff6ee" />
+      <directionalLight
+        position={[20, 30, 50]}
+        intensity={1.9}
+        color="#fff6ee"
+        castShadow
+        shadow-mapSize={[2048, 2048]}
+        shadow-bias={-0.0004}
+        shadow-normalBias={0.06}
+        shadow-camera-left={-42}
+        shadow-camera-right={42}
+        shadow-camera-top={24}
+        shadow-camera-bottom={-24}
+        shadow-camera-near={1}
+        shadow-camera-far={160}
+      />
       <directionalLight position={[-30, -12, 24]} intensity={0.55} color="#bcd4ff" />
       <directionalLight position={[0, 14, -50]} intensity={1.2} />
       <Environment resolution={256}>
