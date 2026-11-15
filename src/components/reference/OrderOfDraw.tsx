@@ -58,9 +58,9 @@ export default function OrderOfDraw() {
       </div>
 
       {done < TUBES.length ? (
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
           {rack.filter((t) => TUBES.indexOf(t) >= done).map((t) => (
-            <button key={t.id} onClick={() => pick(t)} className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-left transition hover:border-accent/60 ${wrong?.id === t.id ? "border-rose-400/70 bg-rose-400/10" : "border-white/15 bg-white/5"}`}>
+            <button key={t.id} onClick={() => pick(t)} className={`flex min-w-0 items-center gap-2 rounded-xl border px-2.5 py-2 text-left transition hover:border-accent/60 sm:px-3 ${wrong?.id === t.id ? "border-rose-400/70 bg-rose-400/10" : "border-white/15 bg-white/5"}`}>
               <TubeIcon cap={t.cap} />
               <span>
                 <span className="block text-sm font-medium">{t.name}</span>
@@ -70,7 +70,7 @@ export default function OrderOfDraw() {
           ))}
         </div>
       ) : (
-        <div className="mt-3 flex items-center justify-between rounded-xl border border-emerald-400/40 bg-emerald-400/10 px-4 py-3">
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-400/40 bg-emerald-400/10 px-4 py-3">
           <p className="text-sm text-emerald-100">{misses === 0 ? "Perfect — correct order with no mistakes." : `Correct order, with ${misses} wrong pick${misses === 1 ? "" : "s"} along the way.`}</p>
           <button className="btn btn-ghost" onClick={restart}>Shuffle and retry</button>
         </div>

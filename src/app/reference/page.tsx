@@ -94,7 +94,23 @@ export default function ReferencePage() {
         <div className="panel mt-4 p-4">
           <OrderOfDraw />
         </div>
-        <div className="panel mt-4 overflow-x-auto">
+        {/* On a phone each tube is a card; a table this wide would have to be scrolled sideways. */}
+        <ol className="mt-4 space-y-2 sm:hidden">
+          {TUBES.map((t, i) => (
+            <li key={t.id} className="panel flex gap-3 p-3">
+              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-sm font-bold text-ink-950" style={{ background: t.cap }}>
+                {i + 1}
+              </span>
+              <div className="min-w-0 text-sm">
+                <p className="font-semibold text-white">{t.name}</p>
+                <p className="text-slate-300">{t.additive}</p>
+                <p className="mt-1 text-slate-400">{t.use}</p>
+                <p className="mt-1 text-xs text-slate-500">Invert {t.inversions} times</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+        <div className="panel mt-4 hidden overflow-x-auto sm:block">
           <table className="w-full min-w-[640px] text-left text-sm">
             <thead className="text-[11px] uppercase tracking-widest text-slate-400">
               <tr>
