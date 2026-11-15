@@ -46,7 +46,7 @@ Order-of-draw trainer, the procedure step by step, site-selection rules, and how
 
 Nothing is loaded from model or texture files; the limb is generated from anatomical parameters when the page opens.
 
-- **Skin** is a signed distance field in centimetres: a lofted super-elliptical tube for the arm and palm, blended with round cones for the digits and with surface landmarks (olecranon, epicondyles, ulnar head, radial styloid, knuckles, muscle bellies). Surface nets turn it into a mesh on a 1.2 mm grid. Subcutaneous tissue and deep fascia are deeper iso-surfaces of the same field.
+- **Skin** is a signed distance field in centimetres: a loft of cross-sections taken at stations along the limb, each with its own extent in the four anatomical directions, blended with round cones for the gently flexed digits and with bony points, tendon ridges and hollows (olecranon, epicondyle, ulnar head, radial styloid, knuckles, thenar and hypothenar pads, cubital fossa, hollow of the palm). Surface nets turn it into a mesh on a 1.1 mm grid. Subcutaneous tissue and deep fascia are deeper iso-surfaces of the same field.
 - **Vessels and nerves** are defined by station along the limb, angle around it and depth beneath the skin, then re-projected onto their tissue plane so they stay at a realistic depth as the surface curves.
 - **Bones** are smooth unions of implicit primitives, so shafts flare into their ends and processes blend into the bone.
 - **Surface detail** is procedural shading: pores, creases and knuckle wrinkles on skin; fibre grain on muscle; lobules on fat; collagen fibres on fascia.
@@ -81,7 +81,7 @@ Next.js (App Router) · React · TypeScript · three.js with React Three Fiber a
 
 ```
 src/
-  app/                    routes: landing, atlas, vein-finder, reference
+  app/                    routes: atlas (the home page redirects here), vein-finder, reference
   components/
     atlas/                3D scene, materials, panels, guided demo and tour
     veinfinder/           upload, analysis views, 3D relief

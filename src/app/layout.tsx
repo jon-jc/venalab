@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 };
 
 const NAV = [
-  { href: "/atlas", label: "3D Atlas" },
+  { href: "/atlas", label: "Practice" },
   { href: "/vein-finder", label: "Vein Finder" },
   { href: "/reference", label: "Reference" },
 ];
@@ -20,7 +20,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="flex min-h-screen flex-col">
         <header className="sticky top-0 z-40 border-b border-white/10 bg-ink-950/80 backdrop-blur">
           <div className="mx-auto flex h-14 max-w-[1600px] items-center justify-between px-4">
-            <Link href="/" className="flex items-center gap-2 font-semibold tracking-tight">
+            <Link href="/atlas" className="flex items-center gap-2 font-semibold tracking-tight">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
                 <path
                   d="M12 2c3.5 4.6 6 7.9 6 11.2A6 6 0 0 1 6 13.2C6 9.9 8.5 6.6 12 2Z"
