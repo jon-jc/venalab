@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Difficulty } from "@/lib/anatomy/patients";
 import type { SimResult } from "@/lib/anatomy/sim";
 import { Cite } from "@/components/reference/Cite";
@@ -14,8 +14,15 @@ const DIFFICULTIES: Difficulty[] = ["beginner", "intermediate", "advanced", "exp
 /** One step of the procedure. Only the current step is open; finished steps show a one-line summary. */
 function Step({ n, title, state = "now", summary, onOpen, children }: { n: number; title: string; state?: "done" | "now" | "next"; summary?: React.ReactNode; onOpen?: () => void; children: React.ReactNode }) {
   const open = state === "now";
+  const ref = useRef<HTMLElement>(null);
+  const was = useRef(open);
+  useEffect(() => {
+    // On a phone the panel scrolls beneath the model: bring a step into view as it opens.
+    if (open && !was.current && window.innerWidth < 1024) ref.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+    was.current = open;
+  }, [open]);
   return (
-    <section className={`border-b border-white/10 px-4 py-3 last:border-0 ${state === "next" ? "opacity-45" : ""}`}>
+    <section ref={ref} className={`scroll-mt-2 border-b border-white/10 px-4 py-3 last:border-0 ${state === "next" ? "opacity-45" : ""}`}>
       <button className="flex w-full items-center gap-2 text-left disabled:cursor-default" disabled={open || !onOpen} onClick={onOpen}>
         <span className={`grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] font-bold ${state === "done" ? "bg-emerald-400/20 text-emerald-300" : open ? "bg-accent text-ink-950" : "bg-white/10 text-slate-400"}`}>
           {state === "done" ? "✓" : n}
@@ -91,7 +98,7 @@ function Venous() {
   const tourniquetAt = useAtlas((s) => s.tourniquetAt);
   const demo = useAtlas((s) => s.demo);
   const level = useAtlas((s) => LEVELS[s.difficulty]);
-  const { set, setSim, aim, setDepth, finish, withdraw, newPatient, stageTo } = useAtlas.getState();
+  const { set, setSim, aim, setDepth, finish, withdraw, newPatient, stageTo, mark } = useAtlas.getState();
   const now = useNow(tourniquet || !!sim.cleansedAt);
 
   const stage = sim.stage;
@@ -145,7 +152,13 @@ function Venous() {
               {level.numbers && palp?.detail && <span className="block text-[11px] text-slate-400">{palp.detail}</span>}
             </span>
           </div>
+          {palp?.held && palp.p && palp.n && (
+            <button className="btn mt-2 w-full" onClick={() => mark(palp.p!, palp.n!)}>
+              Mark this site
+            </button>
+          )}
           <p className="mt-2 text-[11px] text-slate-500">A vein is soft and bouncy. A pulse means artery. A hard cord is tendon.</p>
+          <p className="mt-1 text-[11px] text-slate-500 lg:hidden">On a touch screen, press or slide a finger over the arm to feel it, then tap Mark this site.</p>
           <Cite ids={["clsi-venous", "who"]} className="mt-1" />
           {release}
         </Step>

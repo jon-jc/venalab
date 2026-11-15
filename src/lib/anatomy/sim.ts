@@ -232,6 +232,8 @@ export interface Palpation {
   /** Where on the skin the finger is, and the surface normal there. */
   p?: Vec3;
   n?: Vec3;
+  /** Felt with a finger on a touch screen: it stays where the finger was lifted, so the site can be marked from the panel. */
+  held?: boolean;
 }
 
 /** A textbook puncture of the named vein: entry point, needle heading and depth. */
