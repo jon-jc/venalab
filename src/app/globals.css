@@ -75,9 +75,15 @@ canvas {
   transition: all 0.15s ease;
   white-space: nowrap;
 }
-.chip:hover {
-  border-color: rgba(53, 224, 194, 0.6);
-  color: #fff;
+/* Only where there is a pointer to hover with: on a touch screen the highlight would stick to the last thing tapped. */
+@media (hover: hover) {
+  .chip:hover {
+    border-color: rgba(53, 224, 194, 0.6);
+    color: #fff;
+  }
+  .btn:hover {
+    filter: brightness(1.08);
+  }
 }
 .chip[data-on="true"] {
   background: rgba(53, 224, 194, 0.16);
@@ -98,9 +104,6 @@ canvas {
   color: #04221d;
   cursor: pointer;
   transition: filter 0.15s ease, transform 0.05s ease;
-}
-.btn:hover {
-  filter: brightness(1.08);
 }
 .btn:active {
   transform: translateY(1px);

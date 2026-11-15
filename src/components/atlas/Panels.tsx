@@ -39,69 +39,80 @@ export function ModeTabs() {
   );
 }
 
-export function ControlPanel() {
-  const s = useAtlas();
-  const explore = s.mode === "explore";
+/** The named camera views, as chips. */
+function CameraChips({ className = "" }: { className?: string }) {
+  const view = useAtlas((s) => s.view.id);
+  const goto = useAtlas((s) => s.goto);
   return (
-    <div className="panel thin-scroll max-h-full w-[250px] overflow-y-auto lg:w-[280px]">
-      <Section title="Camera">
+    <>
+      {Object.entries(VIEWS).map(([id, v]) => (
+        <button key={id} className={`chip ${className}`} data-on={view === id} onClick={() => goto(id)}>
+          {v.label}
+        </button>
+      ))}
+    </>
+  );
+}
+
+/** On a phone the camera views are a strip along the foot of the model that scrolls sideways. */
+export function CameraStrip() {
+  return (
+    <div className="no-scrollbar flex gap-1.5 overflow-x-auto px-2 pb-0.5" aria-label="Camera views">
+      <CameraChips className="shrink-0 backdrop-blur" />
+    </div>
+  );
+}
+
+/** What is shown and how: dissection presets, layers, the cross-section and the arm itself. */
+export function ExploreControls() {
+  const s = useAtlas();
+  return (
+    <>
+      <Section title="Dissection presets">
         <div className="flex flex-wrap gap-1.5">
-          {Object.entries(VIEWS).map(([id, v]) => (
-            <button key={id} className="chip" data-on={s.view.id === id} onClick={() => s.goto(id)}>
-              {v.label}
+          {PRESETS.map((p) => (
+            <button key={p.id} title={p.hint} className="chip" data-on={!s.nir && s.preset === p.id} onClick={() => s.applyPreset(p.id)}>
+              {p.label}
             </button>
+          ))}
+          <button className="chip" title="Simulated near-infrared vein illuminator" data-on={s.nir} onClick={() => s.set({ nir: !s.nir })}>
+            Vein illuminator
+          </button>
+          <button className="chip" title="Watch blood move: veins toward the heart, arteries pulsing away from it" data-on={s.flow} onClick={() => s.set({ flow: !s.flow })}>
+            Blood flow
+          </button>
+        </div>
+        <p className="mt-2 text-[11px] text-slate-500 lg:hidden">{s.nir ? "Simulated near-infrared vein illuminator." : (PRESETS.find((p) => p.id === s.preset)?.hint ?? "Your own mix of layers.")}</p>
+      </Section>
+
+      <Section title="Layers">
+        <div className={`space-y-2 ${s.nir ? "pointer-events-none opacity-40" : ""}`}>
+          {LAYER_ORDER.map((id) => (
+            <div key={id} className="flex items-center gap-2">
+              <button
+                onClick={() => s.setLayer(id, s.layers[id] > 0 ? 0 : 1)}
+                className="grid h-8 w-8 shrink-0 place-items-center lg:h-3.5 lg:w-3.5"
+                aria-label={`Toggle ${LAYER_NAME[id]}`}
+              >
+                <span className="h-4 w-4 rounded-sm border border-white/30 lg:h-3.5 lg:w-3.5" style={{ background: s.layers[id] > 0 ? LAYER_COLOR[id] : "transparent" }} />
+              </button>
+              <span className="w-[108px] shrink-0 text-xs text-slate-200">{LAYER_NAME[id]}</span>
+              <input type="range" min={0} max={1} step={0.02} value={s.layers[id]} aria-label={`${LAYER_NAME[id]} opacity`} onChange={(e) => s.setLayer(id, +e.target.value)} />
+            </div>
           ))}
         </div>
       </Section>
 
-      {explore && (
-        <>
-          <Section title="Dissection presets">
-            <div className="flex flex-wrap gap-1.5">
-              {PRESETS.map((p) => (
-                <button key={p.id} title={p.hint} className="chip" data-on={!s.nir && s.preset === p.id} onClick={() => s.applyPreset(p.id)}>
-                  {p.label}
-                </button>
-              ))}
-              <button className="chip" title="Simulated near-infrared vein illuminator" data-on={s.nir} onClick={() => s.set({ nir: !s.nir })}>
-                Vein illuminator
-              </button>
-              <button className="chip" title="Watch blood move: veins toward the heart, arteries pulsing away from it" data-on={s.flow} onClick={() => s.set({ flow: !s.flow })}>
-                Blood flow
-              </button>
-            </div>
-          </Section>
+      <Section title="Cross-section">
+        <div className="flex items-center gap-2">
+          <Toggle on={s.clip !== null} onChange={(v) => s.set({ clip: v ? 4 : null })}>
+            Cut
+          </Toggle>
+          <input type="range" min={-20} max={45} step={0.25} disabled={s.clip === null} value={s.clip ?? 4} aria-label="Position of the cut" onChange={(e) => s.set({ clip: +e.target.value })} />
+        </div>
+        <p className="mt-1.5 text-[11px] text-slate-500">Removes everything distal to the cut so you can look up the limb.</p>
+      </Section>
 
-          <Section title="Layers">
-            <div className={`space-y-2 ${s.nir ? "pointer-events-none opacity-40" : ""}`}>
-              {LAYER_ORDER.map((id) => (
-                <div key={id} className="flex items-center gap-2">
-                  <button
-                    onClick={() => s.setLayer(id, s.layers[id] > 0 ? 0 : 1)}
-                    className="h-3.5 w-3.5 shrink-0 rounded-sm border border-white/30"
-                    style={{ background: s.layers[id] > 0 ? LAYER_COLOR[id] : "transparent" }}
-                    aria-label={`Toggle ${LAYER_NAME[id]}`}
-                  />
-                  <span className="w-[108px] shrink-0 text-xs text-slate-200">{LAYER_NAME[id]}</span>
-                  <input type="range" min={0} max={1} step={0.02} value={s.layers[id]} onChange={(e) => s.setLayer(id, +e.target.value)} />
-                </div>
-              ))}
-            </div>
-          </Section>
-
-          <Section title="Cross-section">
-            <div className="flex items-center gap-2">
-              <Toggle on={s.clip !== null} onChange={(v) => s.set({ clip: v ? 4 : null })}>
-                Cut
-              </Toggle>
-              <input type="range" min={-20} max={45} step={0.25} disabled={s.clip === null} value={s.clip ?? 4} onChange={(e) => s.set({ clip: +e.target.value })} />
-            </div>
-            <p className="mt-1.5 text-[11px] text-slate-500">Removes everything distal to the cut so you can look up the limb.</p>
-          </Section>
-        </>
-      )}
-
-      {explore && (
       <Section title="Arm">
         <div className="space-y-2.5">
           <div>
@@ -122,8 +133,9 @@ export function ControlPanel() {
                 <button
                   key={t.name}
                   title={t.name}
+                  aria-label={`${t.name} skin tone`}
                   onClick={() => s.set({ tone: i })}
-                  className={`h-6 w-6 rounded-full border-2 ${s.tone === i ? "border-accent" : "border-white/20"}`}
+                  className={`h-9 w-9 rounded-full border-2 lg:h-6 lg:w-6 ${s.tone === i ? "border-accent" : "border-white/20"}`}
                   style={{ background: t.color }}
                 />
               ))}
@@ -133,15 +145,27 @@ export function ControlPanel() {
             <Toggle on={s.tourniquet} onChange={(v) => s.set({ tourniquet: v })}>
               Tourniquet
             </Toggle>
-            {explore && (
-              <Toggle on={s.labels} onChange={(v) => s.set({ labels: v })}>
-                Labels
-              </Toggle>
-            )}
+            <Toggle on={s.labels} onChange={(v) => s.set({ labels: v })}>
+              Labels
+            </Toggle>
           </div>
         </div>
       </Section>
-      )}
+    </>
+  );
+}
+
+/** On a wide screen, the card at the left: camera views, and in Explore the anatomy controls beneath them. */
+export function ControlPanel() {
+  const explore = useAtlas((s) => s.mode === "explore");
+  return (
+    <div className="panel thin-scroll max-h-full w-[280px] overflow-y-auto">
+      <Section title="Camera">
+        <div className="flex flex-wrap gap-1.5">
+          <CameraChips />
+        </div>
+      </Section>
+      {explore && <ExploreControls />}
     </div>
   );
 }
@@ -174,7 +198,7 @@ export function InfoPanel() {
             </p>
             <h2 className="mt-0.5 text-lg font-semibold leading-tight">{d.name}</h2>
           </div>
-          <button className="text-slate-400 hover:text-white" onClick={() => set({ selected: null })} aria-label="Close">
+          <button className="tap justify-center text-slate-400 hover:text-white" onClick={() => set({ selected: null })} aria-label="Close">
             ✕
           </button>
         </div>
@@ -248,16 +272,16 @@ export function DemoCaption() {
   const demo = useAtlas((s) => s.demo);
   if (!demo) return null;
   return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-3 z-20 flex justify-center px-3 lg:bottom-10 lg:px-4">
-      <div className="panel pointer-events-auto w-full max-w-2xl px-4 py-3 text-center lg:w-auto lg:px-6 lg:py-4">
+    <div className="pointer-events-none absolute inset-x-0 bottom-3 z-20 flex justify-center px-3 pb-[env(safe-area-inset-bottom)] lg:bottom-10 lg:px-4">
+      <div data-demo-caption className="panel pointer-events-auto w-full max-w-2xl px-4 py-3 text-center max-lg:landscape:py-2 lg:w-auto lg:px-6 lg:py-4">
         <div className="mb-2 flex justify-center gap-1.5">
           {Array.from({ length: demo.total }, (_, i) => (
             <span key={i} className={`h-1 w-7 rounded-full ${i <= demo.step ? "bg-accent" : "bg-white/15"}`} />
           ))}
         </div>
         <p className="text-[11px] font-semibold uppercase tracking-widest text-accent">Step {demo.step + 1} of {demo.total}</p>
-        <p className="mt-1 text-base leading-snug text-white">{demo.caption}</p>
-        <button className="mt-2 text-xs text-slate-400 underline-offset-2 hover:text-white hover:underline" onClick={stopDemo}>
+        <p className="mt-1 text-base leading-snug text-white max-lg:landscape:text-sm">{demo.caption}</p>
+        <button className="tap mt-2 justify-center text-xs text-slate-400 underline-offset-2 hover:text-white hover:underline max-lg:landscape:mt-0" onClick={stopDemo}>
           Stop
         </button>
       </div>

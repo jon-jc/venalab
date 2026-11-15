@@ -823,16 +823,29 @@ function Arm() {
 /** Floating labels are plain DOM nodes; this keeps them pinned to their structures. */
 function LabelProjector() {
   const v = useMemo(() => new THREE.Vector3(), []);
+  // The size of each label, measured once: its text does not change.
+  const sizes = useMemo(() => new WeakMap<HTMLElement, [number, number]>(), []);
+  const placed = useRef<number[][]>([]);
   useFrame(({ camera, size }) => {
     if (!labelEls.size) return;
-    const built = useAtlas.getState().built;
-    for (const [id, el] of labelEls) {
+    const { built, selected } = useAtlas.getState();
+    placed.current.length = 0;
+    // Where labels would lie on top of one another, as on a small screen, only the first keeps its place;
+    // the selected structure is always first.
+    const order = [...labelEls].sort((a, b) => Number(b[0] === selected) - Number(a[0] === selected));
+    for (const [id, el] of order) {
       const b = built.find((x) => x.def.id === id);
       if (!b) continue;
       v.set(b.anchor[0] - OFFSET, b.anchor[1], b.anchor[2]).project(camera);
       const x = ((v.x + 1) / 2) * size.width;
       const y = ((1 - v.y) / 2) * size.height;
-      el.style.visibility = v.z > 1 ? "hidden" : "visible";
+      let box = sizes.get(el);
+      if (!box || !box[0]) sizes.set(el, (box = [el.offsetWidth, el.offsetHeight]));
+      const rect = [x - box[0] / 2, y - box[1] * 1.5, x + box[0] / 2, y - box[1] * 0.5];
+      const clash = placed.current.some((r) => rect[0] < r[2] && rect[2] > r[0] && rect[1] < r[3] && rect[3] > r[1]);
+      const show = v.z <= 1 && !clash;
+      if (show) placed.current.push(rect);
+      el.style.visibility = show ? "visible" : "hidden";
       el.style.transform = `translate(${x}px, ${y}px) translate(-50%, -150%)`;
     }
   });
