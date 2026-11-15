@@ -70,7 +70,7 @@ export function Fingerstick() {
 
   useFrame(({ camera, size }, dt) => {
     // While choosing a site, name the finger under the pointer.
-    if (cap.step === 2 && performance.now() - live.hover.at < 250) {
+    if (cap.step === 2 && (live.hover.held || performance.now() - live.hover.at < 250)) {
       hover.current.copy(live.hover.p);
       showHud(camera, size, hover.current, describe(locate([hover.current.x, hover.current.y, hover.current.z]), hints), "-260%");
     }
