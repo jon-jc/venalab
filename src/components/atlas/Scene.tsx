@@ -12,7 +12,7 @@ import { LAYER_COLOR, LAYER_ORDER, type LayerId } from "@/lib/anatomy/structures
 import { heartbeat, live } from "./live";
 import { arteryMaterial, boneMaterial, fasciaMaterial, fatMaterial, muscleMaterial, nerveMaterial, skinMaterial, skinUniforms, veinMaterial } from "./materials";
 import { Fingerstick } from "./Fingerstick";
-import { effectiveLayers, labelEls, TONES, useAtlas, VIEWS, type Layers } from "./store";
+import { effectiveLayers, labelEls, needleHud, TONES, useAtlas, VIEWS, type Layers } from "./store";
 import { useAnatomy } from "./useAnatomy";
 
 /** The model is shifted so the mid-forearm sits at the world origin. */
@@ -254,8 +254,6 @@ function PalpationRing() {
 }
 
 const GAUGE = { 21: { r: 0.041, hub: "#2f9e58" }, 22: { r: 0.036, hub: "#2a2d33" }, 23: { r: 0.032, hub: "#4da3ff" } };
-/** Distance (cm) from the puncture site to where the holder is gripped. */
-const GRIP = 7.5;
 
 /** A gauze pad left on the site once the needle is out. */
 function Gauze() {
@@ -290,8 +288,12 @@ function Needle() {
   const fill = useRef(0);
   const seat = useRef(0);
   const swell = useRef(0);
-  const drag = useRef<{ push: boolean; s0: number; d0: number } | null>(null);
+  /** A grab in progress: sliding along the axis, or swinging about the site at the radius it was grabbed. */
+  const drag = useRef<{ push: boolean; s0: number; d0: number; radius: number; offset: THREE.Quaternion } | null>(null);
+  const [hover, setHover] = useState<"aim" | "push" | null>(null);
   const basis = useMemo(() => new THREE.Matrix4(), []);
+  const pose = useMemo(() => new THREE.Quaternion(), []);
+  const posed = useRef(false);
 
   const dir = useMemo(() => (sim.normal ? needleDir(sim.normal, sim.angle, sim.yaw) : null), [sim.normal, sim.angle, sim.yaw]);
   const state = sim.result ?? sim.live;
@@ -306,6 +308,7 @@ function Needle() {
     fill.current = 0;
     seat.current = 0;
     swell.current = 0;
+    posed.current = false;
   }, [site]);
 
   useEffect(() => {
@@ -320,7 +323,7 @@ function Needle() {
     return () => window.removeEventListener("keydown", onKey);
   }, [held, sim.entry]);
 
-  useFrame(({ clock }, dtRaw) => {
+  useFrame(({ clock, camera, size }, dtRaw) => {
     const dt = Math.min(dtRaw, 0.05);
     const s = useAtlas.getState();
     if (!group.current || !sim.entry || !sim.normal || !dir) return;
@@ -339,7 +342,11 @@ function Needle() {
     const n = new THREE.Vector3(sim.normal[0], sim.normal[1], sim.normal[2]);
     const up = n.addScaledVector(back, -n.dot(back)).normalize();
     const side = new THREE.Vector3().crossVectors(back, up);
-    group.current.quaternion.setFromRotationMatrix(basis.makeBasis(side, back, up));
+    // The instrument has a little weight: it eases toward where the hand is taking it.
+    pose.setFromRotationMatrix(basis.makeBasis(side, back, up));
+    if (posed.current) group.current.quaternion.slerp(pose, 1 - Math.exp(-dt * 28));
+    else group.current.quaternion.copy(pose);
+    posed.current = true;
     if (held && !drag.current) {
       // Nobody's hand is perfectly still.
       const t = clock.elapsedTime;
@@ -348,6 +355,21 @@ function Needle() {
     }
     const L = shown.current / 10;
     group.current.position.set(sim.entry[0] + dir[0] * L, sim.entry[1] + dir[1] * L, sim.entry[2] + dir[2] * L);
+
+    // Readout beside the hub: the angle to the skin and how much needle is in.
+    const hud = needleHud.el;
+    if (hud) {
+      const show = (held || sim.phase === "advancing") && shown.current > -30;
+      hud.style.visibility = show ? "visible" : "hidden";
+      if (show) {
+        const at = new THREE.Vector3(0, 4.7, 0).applyQuaternion(group.current.quaternion).add(group.current.position);
+        at.x -= OFFSET;
+        at.project(camera);
+        hud.style.transform = `translate(${((at.x + 1) / 2) * size.width}px, ${((1 - at.y) / 2) * size.height}px) translate(-50%, -260%)`;
+        const text = `${sim.angle}°  ·  ${shown.current > 0 ? `${shown.current.toFixed(1)} mm in` : "above the skin"}`;
+        if (hud.textContent !== text) hud.textContent = text;
+      }
+    }
 
     // The tube is pushed home once blood shows in the hub, then fills for as long as the tip stays in the vessel.
     const flowing = inVessel && shown.current > 0 && sim.phase !== "withdraw";
@@ -395,11 +417,24 @@ function Needle() {
     const denom = 1 - b * b;
     return denom < 1e-4 ? 0 : (b * ray.direction.dot(w) - d.dot(w)) / denom;
   };
-  /** Swing the holder to follow the pointer, pivoting about the puncture site. */
-  const aimAt = (ray: THREE.Ray) => {
+  /** Where the pointer ray meets the sphere, about the site, on which the grabbed point travels. */
+  const onSphere = (ray: THREE.Ray, radius: number) => {
     const centre = new THREE.Vector3(entry[0] - OFFSET, entry[1], entry[2]);
-    const hit = ray.intersectSphere(new THREE.Sphere(centre, GRIP), new THREE.Vector3()) ?? ray.closestPointToPoint(centre, new THREE.Vector3());
-    const back = hit.sub(centre).normalize();
+    const oc = ray.origin.clone().sub(centre);
+    const b = oc.dot(ray.direction);
+    const disc = b * b - (oc.lengthSq() - radius * radius);
+    // Off the edge of the sphere, follow its outline.
+    if (disc < 0) return ray.closestPointToPoint(centre, new THREE.Vector3()).sub(centre).normalize();
+    const root = Math.sqrt(disc);
+    const near = ray.at(-b - root, new THREE.Vector3()).sub(centre).normalize();
+    const far = ray.at(-b + root, new THREE.Vector3()).sub(centre).normalize();
+    // Of the two crossings, keep to the side of the sphere the holder is already on.
+    const now = new THREE.Vector3(-dir[0], -dir[1], -dir[2]);
+    return near.dot(now) >= far.dot(now) ? near : far;
+  };
+  /** Swing the holder to follow the pointer, pivoting about the puncture site. */
+  const aimAt = (ray: THREE.Ray, radius: number, offset: THREE.Quaternion) => {
+    const back = onSphere(ray, radius).applyQuaternion(offset).normalize();
     const n = new THREE.Vector3(normal[0], normal[1], normal[2]);
     const angle = THREE.MathUtils.clamp((Math.asin(THREE.MathUtils.clamp(back.dot(n), -1, 1)) * 180) / Math.PI, 3, 85);
     const travel = back.clone().negate().addScaledVector(n, back.dot(n));
@@ -416,6 +451,54 @@ function Needle() {
     if (controls) controls.enabled = true;
     document.body.style.cursor = "grab";
   };
+  /** Pointer handlers for one of the two places the instrument can be taken hold of. */
+  const grip = (zone: "aim" | "push") => ({
+    onPointerOver: (e: ThreeEvent<PointerEvent>) => {
+      if (!held) return;
+      e.stopPropagation();
+      if (controls) controls.enableZoom = false;
+      setHover(zone);
+      if (!drag.current) document.body.style.cursor = "grab";
+    },
+    onPointerOut: () => {
+      if (controls) controls.enableZoom = true;
+      setHover(null);
+      if (!drag.current) document.body.style.cursor = "";
+    },
+    onPointerDown: (e: ThreeEvent<PointerEvent>) => {
+      if (!held) return;
+      e.stopPropagation();
+      (e.target as Element).setPointerCapture(e.pointerId);
+      if (controls) controls.enabled = false;
+      const centre = new THREE.Vector3(entry[0] - OFFSET, entry[1], entry[2]);
+      const radius = Math.max(e.point.distanceTo(centre), 2);
+      // The grabbed point is on the surface of the holder, a little off its axis; remember by how much,
+      // so the needle stays exactly where it is until the pointer moves.
+      const offset = new THREE.Quaternion().setFromUnitVectors(onSphere(e.ray, radius), new THREE.Vector3(-dir[0], -dir[1], -dir[2]));
+      // The back of the tube pushes; so does anything once the needle is in the skin, where it must not be levered.
+      const push = zone === "push" || e.shiftKey || sim.depth > 1.5;
+      drag.current = { push, s0: alongAxis(e.ray), d0: sim.depth, radius, offset };
+      document.body.style.cursor = "grabbing";
+    },
+    onPointerMove: (e: ThreeEvent<PointerEvent>) => {
+      const d = drag.current;
+      if (!d) return;
+      e.stopPropagation();
+      if (d.push) useAtlas.getState().setDepth(d.d0 + (alongAxis(e.ray) - d.s0) * 10);
+      else aimAt(e.ray, d.radius, d.offset);
+    },
+    onPointerUp: (e: ThreeEvent<PointerEvent>) => {
+      (e.target as Element).releasePointerCapture(e.pointerId);
+      release();
+    },
+    onWheel: (e: ThreeEvent<WheelEvent>) => {
+      if (!held) return;
+      e.stopPropagation();
+      const s = useAtlas.getState();
+      s.setDepth(s.sim.depth - Math.sign(e.deltaY) * 0.5);
+    },
+  });
+  const pushing = sim.depth > 1.5;
 
   return (
     <>
@@ -428,49 +511,27 @@ function Needle() {
         <meshStandardMaterial color="#4b1f3f" transparent opacity={0.62} roughness={0.8} depthWrite={false} />
       </mesh>
       <group ref={group}>
-        {/* invisible sleeve around the hub and holder: the part you take hold of */}
-        <mesh
-          position={[0, 8, 0]}
-          onPointerOver={(e) => {
-            if (!held) return;
-            e.stopPropagation();
-            if (controls) controls.enableZoom = false;
-            if (!drag.current) document.body.style.cursor = "grab";
-          }}
-          onPointerOut={() => {
-            if (controls) controls.enableZoom = true;
-            if (!drag.current) document.body.style.cursor = "";
-          }}
-          onPointerDown={(e) => {
-            if (!held) return;
-            e.stopPropagation();
-            (e.target as Element).setPointerCapture(e.pointerId);
-            if (controls) controls.enabled = false;
-            // In the air the needle pivots about the site; once in the skin it can only slide along itself.
-            drag.current = { push: e.shiftKey || sim.depth > 1.5, s0: alongAxis(e.ray), d0: sim.depth };
-            document.body.style.cursor = "grabbing";
-          }}
-          onPointerMove={(e) => {
-            const d = drag.current;
-            if (!d) return;
-            e.stopPropagation();
-            if (d.push) useAtlas.getState().setDepth(d.d0 + (alongAxis(e.ray) - d.s0) * 10);
-            else aimAt(e.ray);
-          }}
-          onPointerUp={(e) => {
-            (e.target as Element).releasePointerCapture(e.pointerId);
-            release();
-          }}
-          onWheel={(e) => {
-            if (!held) return;
-            e.stopPropagation();
-            const s = useAtlas.getState();
-            s.setDepth(s.sim.depth - Math.sign(e.deltaY) * 0.5);
-          }}
-        >
-          <cylinderGeometry args={[1.5, 1.1, 9.5, 16]} />
+        {/* Two places to take hold: the holder, to tilt and aim; the end of the tube, to push in and draw back. */}
+        <mesh position={[0, 6.6, 0]} {...grip("aim")}>
+          <cylinderGeometry args={[1.6, 1.0, 5.6, 16]} />
           <meshBasicMaterial transparent opacity={0} depthWrite={false} />
         </mesh>
+        <mesh position={[0, 11.9, 0]} {...grip("push")}>
+          <cylinderGeometry args={[1.5, 1.6, 5.0, 16]} />
+          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+        </mesh>
+        {held && (
+          <>
+            <mesh position={[0, 7.8, 0]} rotation={[Math.PI / 2, 0, 0]}>
+              <torusGeometry args={[0.95, hover === "aim" && !pushing ? 0.07 : 0.035, 10, 48]} />
+              <meshBasicMaterial color="#35e0c2" transparent opacity={pushing ? 0.12 : hover === "aim" ? 1 : 0.5} />
+            </mesh>
+            <mesh position={[0, 13.25, 0]} rotation={[Math.PI / 2, 0, 0]}>
+              <torusGeometry args={[0.72, hover === "push" || (pushing && hover) ? 0.07 : 0.035, 10, 48]} />
+              <meshBasicMaterial color="#ffc23d" transparent opacity={hover === "push" || (pushing && hover) ? 1 : 0.55} />
+            </mesh>
+          </>
+        )}
 
         {/* cannula with a ground bevel: the point lies on the side nearest the skin, the opening faces up */}
         <mesh position={[0, 0.16, 0]} geometry={BEVEL} scale={[r, 1, r]}>

@@ -1,7 +1,7 @@
 "use client";
 
 import { LAYER_COLOR } from "@/lib/anatomy/structures";
-import { effectiveLayers, labelEls, useAtlas } from "./store";
+import { effectiveLayers, labelEls, needleHud, useAtlas } from "./store";
 
 /** DOM overlay of structure names; positions are written each frame by the scene. */
 export function Labels() {
@@ -17,6 +17,13 @@ export function Labels() {
   const shown = built.filter((b) => b.def.id === selected || (on && b.def.label && eff[b.def.layer] > 0.3));
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden">
+      <div
+        ref={(el) => {
+          needleHud.el = el;
+        }}
+        className="label-pill absolute left-0 top-0"
+        style={{ visibility: "hidden", borderColor: "rgba(53, 224, 194, 0.7)", fontSize: 12 }}
+      />
       {shown.map((b) => (
         <div
           key={b.def.id}

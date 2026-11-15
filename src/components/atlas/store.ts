@@ -15,6 +15,8 @@ const L = (p: Partial<Layers>): Layers => ({ ...none, ...p });
 
 /** Label elements by structure id; the scene writes their screen positions every frame. */
 export const labelEls = new Map<string, HTMLDivElement>();
+/** The readout that floats beside the needle; the scene positions it and writes its text. */
+export const needleHud: { el: HTMLDivElement | null } = { el: null };
 
 export const PRESETS: { id: string; label: string; hint: string; layers: Layers }[] = [
   { id: "surface", label: "Surface", hint: "What you see at the bedside", layers: L({ skin: 1 }) },
@@ -214,8 +216,15 @@ export const useAtlas = create<AtlasState>((set, get) => {
       set({ patient, pattern: patient.pattern, tone: patient.tone, tourniquet: false, palp: null, cap: freshCap, sim: { ...get().sim, ...freshSim, gauze: null } });
     },
     mark: (p, n) => {
-      if (get().procedure === "capillary") set({ cap: { ...get().cap, site: p, normal: n, phase: "aim", cleansedAt: null, puncturedAt: null, result: null } });
+      const capillary = get().procedure === "capillary";
+      const last = capillary ? get().cap.site : get().sim.entry;
+      if (capillary) set({ cap: { ...get().cap, site: p, normal: n, phase: "aim", cleansedAt: null, puncturedAt: null, result: null } });
       else set({ sim: { ...get().sim, ...freshSim, entry: p, normal: n, angle: get().sim.angle, anchor: get().sim.anchor, gauze: null } });
+      // Bring the camera in close, looking down on the site from the patient's hand, unless it is already there.
+      if (last && Math.hypot(p[0] - last[0], p[1] - last[1], p[2] - last[2]) < 6) return;
+      const back = capillary ? 13 : 21;
+      const along = capillary ? 5 : 11;
+      set({ view: { id: "site", n: get().view.n + 1, target: p, position: [p[0] + n[0] * back + along, p[1] + n[1] * back - 4, p[2] + n[2] * back] } });
     },
     cleanse: () => {
       if (get().procedure === "capillary") set({ cap: { ...get().cap, cleansedAt: Date.now() } });
