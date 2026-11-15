@@ -18,6 +18,12 @@ body {
   height: 100%;
 }
 
+html {
+  /* Phones must not enlarge text of their own accord when turned on their side. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 body {
   background:
     radial-gradient(1200px 600px at 80% -10%, rgba(79, 140, 255, 0.12), transparent 60%),
@@ -26,6 +32,25 @@ body {
   color: #e6edf7;
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  /* Keep clear of a notch or rounded corners when the page runs edge to edge. */
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+/* A tap acts at once: no wait to see whether it is the first half of a double-tap zoom. */
+a,
+button,
+label,
+input,
+summary {
+  touch-action: manipulation;
+}
+
+/* A finger held on the model must not select it or call up the image menu. */
+canvas {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 @layer components {
@@ -109,6 +134,38 @@ input[type="range"] {
   border: 1px solid rgba(255, 255, 255, 0.18);
   color: #fff;
   will-change: transform;
+}
+
+/* On a touch screen every control is at least a fingertip tall. */
+@media (pointer: coarse) {
+  .chip {
+    padding: 8px 13px;
+    font-size: 13px;
+  }
+  .btn {
+    padding: 12px 16px;
+  }
+  input[type="range"] {
+    height: 30px;
+  }
+  /* Small text links and icon buttons get a taller target without changing how they look. */
+  .tap {
+    display: inline-flex;
+    align-items: center;
+    min-height: 40px;
+    min-width: 40px;
+  }
+  .tap-row {
+    min-height: 40px;
+  }
+}
+
+/* A row that scrolls sideways without showing a scrollbar. */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }
 
 .thin-scroll::-webkit-scrollbar {
