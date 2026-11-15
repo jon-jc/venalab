@@ -1,7 +1,7 @@
 "use client";
 
 import * as THREE from "three";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { ContactShadows, Environment, Lightformer, OrbitControls } from "@react-three/drei";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
@@ -9,6 +9,7 @@ import type { Built } from "@/lib/anatomy/geometry";
 import { DILATION, needleDir, palpate } from "@/lib/anatomy/sim";
 import { onLimb, skinNormal, type Vec3 } from "@/lib/anatomy/skin";
 import { LAYER_COLOR, LAYER_ORDER, type LayerId } from "@/lib/anatomy/structures";
+import { useKit } from "./kit";
 import { heartbeat, live } from "./live";
 import { arteryMaterial, boneMaterial, fasciaMaterial, fatMaterial, muscleMaterial, nerveMaterial, skinMaterial, skinUniforms, veinMaterial } from "./materials";
 import { Fingerstick } from "./Fingerstick";
@@ -278,6 +279,7 @@ function Needle() {
   const sim = useAtlas((s) => s.sim);
   const demo = useAtlas((s) => !!s.demo);
   const controls = useThree((s) => s.controls) as OrbitControlsImpl | null;
+  const kit = useKit();
   const group = useRef<THREE.Group>(null);
   const tube = useRef<THREE.Group>(null);
   const blood = useRef<THREE.Mesh>(null);
@@ -533,63 +535,30 @@ function Needle() {
           </>
         )}
 
-        {/* cannula with a ground bevel: the point lies on the side nearest the skin, the opening faces up */}
-        <mesh position={[0, 0.16, 0]} geometry={BEVEL} scale={[r, 1, r]}>
-          <meshStandardMaterial color="#e6ebf2" metalness={0.95} roughness={0.18} />
-        </mesh>
-        <mesh position={[0, 2.06, 0]} castShadow>
-          <cylinderGeometry args={[r, r, 3.48, 16]} />
-          <meshStandardMaterial color="#e6ebf2" metalness={0.95} roughness={0.18} />
+        {/* cannula: a hollow tube with a ground bevel, its point on the side nearest the skin */}
+        <mesh geometry={kit.Cannula} scale={[r, 1, r]} castShadow>
+          <meshStandardMaterial color="#e6ebf2" metalness={0.95} roughness={0.16} />
         </mesh>
         {/* colour-coded hub; its flash chamber shows the first blood */}
-        <mesh position={[0, 4.0, 0]}>
-          <cylinderGeometry args={[0.13, 0.1, 0.42, 16]} />
-          <meshStandardMaterial color={g.hub} roughness={0.45} />
+        <mesh geometry={kit.Hub} castShadow>
+          <meshPhysicalMaterial ref={flash} color={g.hub} emissive={bloodColor} emissiveIntensity={0} roughness={0.35} clearcoat={0.6} />
         </mesh>
-        <mesh position={[0, 4.72, 0]} castShadow>
-          <cylinderGeometry args={[0.3, 0.16, 1.04, 24]} />
-          <meshPhysicalMaterial ref={flash} color={g.hub} emissive={bloodColor} emissiveIntensity={0} roughness={0.35} clearcoat={0.6} transparent opacity={0.92} />
+        <mesh geometry={kit.Sleeve}>
+          <meshStandardMaterial color="#6f7884" roughness={0.75} />
         </mesh>
-        {[0, 1, 2, 3].map((i) => (
-          <mesh key={i} position={[0, 4.72, 0]} rotation={[0, (i * Math.PI) / 2, 0]}>
-            <boxGeometry args={[0.7, 0.9, 0.05]} />
-            <meshStandardMaterial color={g.hub} roughness={0.45} />
-          </mesh>
-        ))}
-        {/* holder with its finger flange */}
-        <mesh position={[0, 7.8, 0]}>
-          <cylinderGeometry args={[0.85, 0.85, 5, 40, 1, true]} />
-          <meshPhysicalMaterial color="#d9ecff" transparent opacity={0.22} roughness={0.06} side={THREE.DoubleSide} depthWrite={false} />
-        </mesh>
-        <mesh position={[0, 5.32, 0]}>
-          <cylinderGeometry args={[0.85, 0.32, 0.08, 40]} />
-          <meshPhysicalMaterial color="#cfe0f2" transparent opacity={0.5} roughness={0.1} />
-        </mesh>
-        <mesh position={[0, 10.3, 0]} scale={[1.9, 1, 1]} castShadow>
-          <cylinderGeometry args={[0.95, 0.95, 0.12, 40]} />
-          <meshPhysicalMaterial color="#cfe0f2" transparent opacity={0.55} roughness={0.1} />
-        </mesh>
-        {/* inner needle in its rubber sleeve, which pierces the tube stopper */}
-        <mesh position={[0, 5.95, 0]}>
-          <cylinderGeometry args={[0.07, 0.09, 1.2, 12]} />
-          <meshStandardMaterial color="#7d8794" roughness={0.7} />
+        {/* clear holder with its finger flange */}
+        <mesh geometry={kit.Holder}>
+          <meshPhysicalMaterial color="#dcecff" transparent opacity={0.3} roughness={0.05} clearcoat={1} side={THREE.DoubleSide} depthWrite={false} />
         </mesh>
         {/* evacuated tube: slides home when blood shows, then fills */}
         <group ref={tube}>
-          <mesh position={[0, 9.6, 0]}>
-            <cylinderGeometry args={[0.62, 0.62, 6.8, 40, 1, true]} />
-            <meshPhysicalMaterial color="#ffffff" transparent opacity={0.16} roughness={0.04} side={THREE.DoubleSide} depthWrite={false} />
+          <mesh geometry={kit.TubeGlass}>
+            <meshPhysicalMaterial color="#ffffff" transparent opacity={0.2} roughness={0.03} clearcoat={1} side={THREE.DoubleSide} depthWrite={false} />
           </mesh>
-          <mesh position={[0, 13.0, 0]}>
-            <sphereGeometry args={[0.62, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2]} />
-            <meshPhysicalMaterial color="#ffffff" transparent opacity={0.16} roughness={0.04} depthWrite={false} />
+          <mesh geometry={kit.Stopper} castShadow>
+            <meshPhysicalMaterial color="#b79adf" roughness={0.55} clearcoat={0.2} />
           </mesh>
-          <mesh position={[0, 6.0, 0]} castShadow>
-            <cylinderGeometry args={[0.72, 0.72, 0.75, 32]} />
-            <meshStandardMaterial color="#b79adf" roughness={0.6} />
-          </mesh>
-          <mesh position={[0, 9.4, 0.615]} rotation={[0, 0, 0]}>
-            <planeGeometry args={[0.9, 3.4]} />
+          <mesh geometry={kit.Label}>
             <meshStandardMaterial color="#f6f4ee" roughness={0.9} side={THREE.DoubleSide} />
           </mesh>
           <mesh ref={jet} position={[0, 9.5, 0]} visible={false}>
@@ -597,7 +566,7 @@ function Needle() {
             <meshStandardMaterial color={bloodColor} roughness={0.2} />
           </mesh>
           <mesh ref={blood} visible={false}>
-            <cylinderGeometry args={[0.56, 0.56, 1, 32]} />
+            <cylinderGeometry args={[0.55, 0.55, 1, 32]} />
             <meshPhysicalMaterial color={bloodColor} roughness={0.15} clearcoat={0.8} />
           </mesh>
         </group>
@@ -605,16 +574,6 @@ function Needle() {
     </>
   );
 }
-
-/** Needle point: a cone sheared so its tip sits at one side, like a ground bevel. Unit radius, 0.32 cm long. */
-const BEVEL = (() => {
-  const g = new THREE.ConeGeometry(1, 0.32, 20, 1, false);
-  g.rotateX(Math.PI);
-  const p = g.getAttribute("position");
-  for (let i = 0; i < p.count; i++) p.setZ(i, p.getZ(i) - (0.5 - p.getY(i) / 0.32));
-  g.computeVertexNormals();
-  return g;
-})();
 
 /** Alcohol on the skin: a wet sheen over the site that dries away in a few seconds. */
 function Swab() {
@@ -815,7 +774,11 @@ function Arm() {
       {showFlow && layers.veins > 0 && <Flow built={built} layer="veins" />}
       {showFlow && layers.arteries > 0 && <Flow built={built} layer="arteries" />}
       {tourniquet && <Tourniquet key={anatomy.body.girth} />}
-      {mode === "sim" && procedure === "venous" && <Needle />}
+      {mode === "sim" && procedure === "venous" && (
+        <Suspense fallback={null}>
+          <Needle />
+        </Suspense>
+      )}
       {mode === "sim" && procedure === "venous" && <Gauze />}
       {mode === "sim" && procedure === "capillary" && <Fingerstick />}
       {mode === "sim" && <Swab />}
