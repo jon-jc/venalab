@@ -1,7 +1,7 @@
 "use client";
 
 import { LAYER_COLOR, LAYER_NAME, LAYER_ORDER, RATING_COLOR, RATING_LABEL, type StructureDef } from "@/lib/anatomy/structures";
-import { playDemo, playTour, stopDemo } from "./demo";
+import { playTour, stopDemo } from "./demo";
 import { PRESETS, TONES, useAtlas, VIEWS, type Mode } from "./store";
 
 const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
@@ -46,7 +46,7 @@ export function ControlPanel() {
     <div className="panel thin-scroll max-h-full w-[280px] overflow-y-auto">
       <Section title="Camera">
         <div className="flex flex-wrap gap-1.5">
-          {Object.entries(VIEWS).filter(([id]) => id !== "needle").map(([id, v]) => (
+          {Object.entries(VIEWS).map(([id, v]) => (
             <button key={id} className="chip" data-on={s.view.id === id} onClick={() => s.goto(id)}>
               {v.label}
             </button>
@@ -101,7 +101,8 @@ export function ControlPanel() {
         </>
       )}
 
-      <Section title="Patient">
+      {explore && (
+      <Section title="Arm">
         <div className="space-y-2.5">
           <div>
             <p className="mb-1 text-[11px] text-slate-400">Antecubital vein pattern</p>
@@ -140,6 +141,7 @@ export function ControlPanel() {
           </div>
         </div>
       </Section>
+      )}
     </div>
   );
 }
@@ -237,117 +239,6 @@ export function InfoPanel() {
           </li>
         ))}
       </ul>
-    </div>
-  );
-}
-
-const TONE_STYLE = { good: "border-emerald-400/40 bg-emerald-400/10", warn: "border-amber-400/40 bg-amber-400/10", bad: "border-rose-400/50 bg-rose-400/10" };
-const PALP_COLOR = { vein: "#7fa2ff", artery: "#ff4d57", tendon: "#efe7d6", none: "#64748b" };
-
-export function SimPanel() {
-  const sim = useAtlas((s) => s.sim);
-  const setSim = useAtlas((s) => s.setSim);
-  const advance = useAtlas((s) => s.advance);
-  const palp = useAtlas((s) => s.palp);
-  const tourniquet = useAtlas((s) => s.tourniquet);
-  const demo = useAtlas((s) => s.demo);
-  const r = sim.result;
-  const aiming = sim.phase === "aim" && !demo;
-
-  const newPatient = () => {
-    const s = useAtlas.getState();
-    s.set({ pattern: Math.random() < 0.7 ? "H" : "M", tone: Math.floor(Math.random() * 4), tourniquet: false });
-    s.resetSim();
-  };
-
-  return (
-    <div className="panel thin-scroll max-h-full w-[340px] overflow-y-auto">
-      <div className="flex items-center justify-between gap-2 border-b border-white/10 px-4 py-3">
-        <div className="text-xs text-slate-300">
-          <b className="text-base text-white">{sim.hits}</b>/{sim.attempts} successful
-          {sim.attempts > 0 && <span className="ml-2 text-slate-400">avg {Math.round(sim.total / sim.attempts)}/100</span>}
-        </div>
-        <button className="chip" onClick={newPatient} disabled={!!demo} title="Randomise vein pattern and skin tone">
-          New patient
-        </button>
-      </div>
-
-      <div className="border-b border-white/10 px-4 py-3">
-        <button className="btn btn-ghost w-full" onClick={() => (demo ? stopDemo() : playDemo())}>
-          {demo ? "■  Stop demonstration" : "▶  Watch a guided venipuncture"}
-        </button>
-      </div>
-
-      <div className={demo ? "pointer-events-none opacity-40" : ""}>
-        <Section title="1 · Palpate">
-          <p className="text-xs text-slate-400">Move the pointer over the skin to feel what lies beneath. Veins are bouncy; arteries pulse; tendons are cords.</p>
-          <div className="mt-2 flex min-h-[52px] items-center gap-2 rounded-lg bg-white/5 px-3 py-2 text-sm">
-            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: PALP_COLOR[palp?.kind ?? "none"] }} />
-            <span className="text-slate-200">{palp?.text ?? "Hover over the arm to palpate."}</span>
-          </div>
-          {!tourniquet && <p className="mt-2 text-[11px] text-amber-300/90">Tip: apply the tourniquet (left panel) and watch the veins distend.</p>}
-        </Section>
-
-        <Section title="2 · Choose the puncture site">
-          <p className="text-sm text-slate-200">{sim.entry ? "Site marked. Click elsewhere on the skin to move it." : "Click the skin where the needle should enter."}</p>
-        </Section>
-
-        <Section title="3 · Set up the needle">
-          <div className={`space-y-2.5 text-xs text-slate-300 ${aiming ? "" : "pointer-events-none opacity-50"}`}>
-            <label className="block">
-              <span className="flex justify-between"><span>Angle to skin</span><b>{sim.angle}°</b></span>
-              <input type="range" min={5} max={60} value={sim.angle} onChange={(e) => setSim({ angle: +e.target.value })} />
-            </label>
-            <label className="block">
-              <span className="flex justify-between"><span>Direction (rotate about the site)</span><b>{sim.yaw}°</b></span>
-              <input type="range" min={-90} max={90} value={sim.yaw} onChange={(e) => setSim({ yaw: +e.target.value })} />
-            </label>
-            <label className="block">
-              <span className="flex justify-between"><span>Length of needle to advance</span><b>{sim.depth} mm</b></span>
-              <input type="range" min={1} max={30} value={sim.depth} onChange={(e) => setSim({ depth: +e.target.value })} />
-            </label>
-            <div className="flex items-center gap-1.5">
-              <span className="mr-1">Needle</span>
-              {([21, 22, 23] as const).map((g) => (
-                <button key={g} className="chip" data-on={sim.gauge === g} onClick={() => setSim({ gauge: g })}>
-                  {g}G{g === 23 ? " winged" : ""}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="mt-3 flex gap-2">
-            {sim.phase === "done" ? (
-              <button className="btn flex-1" onClick={() => setSim({ phase: "withdraw" })}>
-                Withdraw needle
-              </button>
-            ) : (
-              <button className="btn flex-1" disabled={!sim.entry || !aiming} onClick={advance}>
-                {sim.phase === "advancing" ? "Advancing…" : "Advance needle"}
-              </button>
-            )}
-            <button className="btn btn-ghost" onClick={() => setSim({ reveal: !sim.reveal })}>
-              {sim.reveal ? "Hide anatomy" : "X-ray"}
-            </button>
-          </div>
-        </Section>
-      </div>
-
-      {r && !demo && (
-        <Section title="Debrief">
-          <div className="flex items-center justify-between">
-            <h3 className={`text-base font-semibold ${r.outcome === "success" ? "text-emerald-300" : "text-rose-300"}`}>{r.title}</h3>
-            <span className="rounded-lg bg-white/10 px-2 py-1 text-sm font-bold">{r.score}/100</span>
-          </div>
-          <p className="mt-1 text-[11px] text-slate-400">Needle tip {r.tipDepthMm.toFixed(1)} mm beneath the skin.</p>
-          <ul className="mt-2 space-y-1.5">
-            {r.notes.map((n, i) => (
-              <li key={i} className={`rounded-lg border px-3 py-2 text-[13px] leading-snug text-slate-100 ${TONE_STYLE[n.tone]}`}>
-                {n.text}
-              </li>
-            ))}
-          </ul>
-        </Section>
-      )}
     </div>
   );
 }

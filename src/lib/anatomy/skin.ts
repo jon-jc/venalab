@@ -57,6 +57,7 @@ const SLOPES = KEYS.map((_, i) => {
 
 /** Section at x: [radial, ulnar, anterior, posterior, squareness], cached for the last x queried. */
 const section = [1, 1, 1, 1, 2];
+let cachedField: Field | null = null;
 let sectionX = NaN;
 
 function loadSection(x: number) {
@@ -76,7 +77,20 @@ function loadSection(x: number) {
   const h01 = -2 * t3 + 3 * t2;
   const h11 = (t3 - t2) * h;
   for (let c = 0; c < 5; c++) section[c] = h00 * k0[c + 1] + h10 * SLOPES[i][c] + h01 * k1[c + 1] + h11 * SLOPES[i + 1][c];
+  const f = bulk(xc);
+  for (let c = 0; c < 4; c++) section[c] *= f;
 }
+
+let GIRTH = 1;
+
+/** How much thicker than average the soft tissue is at x. The hand keeps its size. */
+function bulk(x: number): number {
+  const t = Math.min(Math.max((27 - x) / 6, 0), 1);
+  return 1 + (GIRTH - 1) * t * t * (3 - 2 * t);
+}
+
+/** The build the limb is currently modelled with; 1 is average. */
+export const girth = () => GIRTH;
 
 function smin(a: number, b: number, k: number): number {
   const h = Math.max(k - Math.abs(a - b), 0) / k;
@@ -244,14 +258,31 @@ interface Active {
   cones: Cone[][];
 }
 
-const EVERYTHING: Active = { balls: LANDMARKS, cords: RIDGES, hollows: HOLLOWS, cones: DIGIT_CONES };
+/** Surface features ride outward with the skin when the arm carries more tissue. */
+const outward = (p: Vec3): Vec3 => [p[0], p[1] * bulk(p[0]), p[2] * bulk(p[0])];
+const everything = (): Active => ({
+  balls: LANDMARKS.map(([c, r, k]): Ball => [outward(c), r, k]),
+  cords: RIDGES.map(([a, b, r, k]): Cord => [outward(a), outward(b), r, k]),
+  hollows: HOLLOWS.map(([c, r, k]): Ball => [outward(c), r, k]),
+  cones: DIGIT_CONES,
+});
+let EVERYTHING: Active = everything();
+
+/** Change the soft-tissue build of the arm. Everything derived from the field must be rebuilt afterwards. */
+export function setGirth(g: number) {
+  if (g === GIRTH) return;
+  GIRTH = g;
+  EVERYTHING = everything();
+  sectionX = NaN;
+  cachedField = null;
+}
 
 /** Only what can reach the plane at x: the grid is filled slice by slice, so most primitives drop out. */
 function activeAt(x: number): Active {
   return {
-    balls: LANDMARKS.filter(([c, r, k]) => Math.abs(x - c[0]) <= r + k),
-    cords: RIDGES.filter(([a, b, r, k]) => x >= Math.min(a[0], b[0]) - r - k && x <= Math.max(a[0], b[0]) + r + k),
-    hollows: HOLLOWS.filter(([c, r, k]) => Math.abs(x - c[0]) <= r + k),
+    balls: EVERYTHING.balls.filter(([c, r, k]) => Math.abs(x - c[0]) <= r + k),
+    cords: EVERYTHING.cords.filter(([a, b, r, k]) => x >= Math.min(a[0], b[0]) - r - k && x <= Math.max(a[0], b[0]) + r + k),
+    hollows: EVERYTHING.hollows.filter(([c, r, k]) => Math.abs(x - c[0]) <= r + k),
     cones: DIGIT_CONES.map((cones) => cones.filter((c) => x >= c.min[0] && x <= c.max[0])),
   };
 }
@@ -365,8 +396,6 @@ export interface Field {
   origin: Vec3;
   h: number;
 }
-
-let cachedField: Field | null = null;
 
 /** Sample the skin field on a regular grid (computed once). */
 export function skinField(h = 0.11): Field {
