@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { evaluateCapillary, type CapillaryChoices } from "@/lib/anatomy/capillary";
 import type { Built } from "@/lib/anatomy/geometry";
 import { nextPatient, PATIENTS, type Difficulty, type Patient } from "@/lib/anatomy/patients";
-import { evaluate, type Note, type Palpation, type SimResult } from "@/lib/anatomy/sim";
+import { evaluate, needleDir, type Note, type Palpation, type SimResult } from "@/lib/anatomy/sim";
 import type { Vec3 } from "@/lib/anatomy/skin";
 import type { LayerId, Pattern } from "@/lib/anatomy/structures";
 
@@ -53,6 +53,72 @@ export const LEVELS: Record<Difficulty, { label: string; blurb: string; xray: bo
 };
 
 export const HOVER_MM = -7;
+
+/** Width of the practice panel and its margin on a wide screen, px; below this width it sits along the bottom instead. */
+const PANEL_PX = 366;
+const WIDE_PX = 1024;
+/** Length of the needle, holder and tube from the point to the end of the tube, cm. */
+const INSTRUMENT_CM = 14.6;
+
+/**
+ * A camera pose that shows a site on the skin, and the instrument held over
+ * it, in the part of the screen the panels leave clear. The view is from the
+ * collector's side, looking down on the site and across the needle, so the
+ * whole instrument is seen side-on and its angle to the skin can be judged.
+ */
+export function siteView(p: Vec3, n: Vec3, instrument: { angle: number; yaw: number } | null, around = 2.6): { target: Vec3; position: Vec3 } {
+  const unit = (v: Vec3): Vec3 => {
+    const l = Math.hypot(v[0], v[1], v[2]) || 1;
+    return [v[0] / l, v[1] / l, v[2] / l];
+  };
+  const cross = (a: Vec3, b: Vec3): Vec3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  let toward = unit([n[0] - 0.15, n[1] - 0.6, n[2]]);
+  // The camera orbits about the vertical, so it cannot look straight up or down.
+  if (Math.abs(toward[1]) > 0.85) {
+    const flat = Math.hypot(toward[0], toward[2]);
+    const k = Math.sqrt(1 - 0.85 * 0.85) / (flat || 1);
+    toward = [flat ? toward[0] * k : 0, Math.sign(toward[1]) * 0.85, flat ? toward[2] * k : Math.sqrt(1 - 0.85 * 0.85)];
+  }
+  const right = unit(cross([0, 1, 0], toward));
+  const up = cross(toward, right);
+
+  // What has to be in view, as (across, up, toward the camera) from the site in cm:
+  // the site with a margin of skin around it, and the far end of the instrument.
+  const margin = instrument ? 2.4 : around;
+  const points: Vec3[] = [[-margin, -margin, 0], [margin, -margin, 0], [-margin, margin, 0], [margin, margin, 0]];
+  if (instrument) {
+    const d = needleDir(n, instrument.angle, instrument.yaw);
+    const end: Vec3 = [-d[0] * INSTRUMENT_CM, -d[1] * INSTRUMENT_CM, -d[2] * INSTRUMENT_CM];
+    const [u, v, w] = [dot(end, right), dot(end, up), dot(end, toward)];
+    points.push([u - 1.4, v - 1.4, w], [u + 1.4, v - 1.4, w], [u - 1.4, v + 1.8, w], [u + 1.4, v + 1.8, w]);
+  }
+
+  // The clear part of the canvas, in pixels from its centre (x to the right, y upward).
+  const W = typeof window === "undefined" ? 1440 : window.innerWidth;
+  const H = (typeof window === "undefined" ? 860 : window.innerHeight) - 56;
+  const clear = W >= WIDE_PX ? { x0: -W / 2 + 24, x1: W / 2 - PANEL_PX, y0: -H / 2 + 36, y1: H / 2 - 56 } : { x0: -W / 2 + 8, x1: W / 2 - 8, y0: H / 2 - H * 0.5, y1: H / 2 - 60 };
+  // The camera's vertical field of view is 30°.
+  const focal = H / (2 * Math.tan(Math.PI / 12));
+  const nearest = instrument ? 20 : 11;
+  let distance = 30, du = 0, dv = 0;
+  // Things nearer the camera look bigger, so the fit is found by repeated correction.
+  for (let i = 0; i < 16; i++) {
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const q of points) {
+      const k = focal / (distance - q[2]);
+      x0 = Math.min(x0, (q[0] - du) * k);
+      x1 = Math.max(x1, (q[0] - du) * k);
+      y0 = Math.min(y0, (q[1] - dv) * k);
+      y1 = Math.max(y1, (q[1] - dv) * k);
+    }
+    du += ((x0 + x1) / 2 - (clear.x0 + clear.x1) / 2) * (distance / focal);
+    dv += ((y0 + y1) / 2 - (clear.y0 + clear.y1) / 2) * (distance / focal);
+    distance = Math.min(Math.max(distance * Math.max((x1 - x0) / (clear.x1 - clear.x0), (y1 - y0) / (clear.y1 - clear.y0)), nearest), 90);
+  }
+  const target: Vec3 = [p[0] + right[0] * du + up[0] * dv, p[1] + right[1] * du + up[1] * dv, p[2] + right[2] * du + up[2] * dv];
+  return { target, position: [target[0] + toward[0] * distance, target[1] + toward[1] * distance, target[2] + toward[2] * distance] };
+}
 
 /** Where the collector is in a venipuncture. Each stage puts a different tool in the hand. */
 export type Stage = "tourniquet" | "palpate" | "cleanse" | "needle" | "done";
@@ -192,6 +258,12 @@ export const useAtlas = create<AtlasState>((set, get) => {
     return { ...base, notes, score: Math.max(0, score) };
   };
 
+  /** Draw the camera back far enough to show the whole needle, holder and tube over the site. */
+  const showNeedle = () => {
+    const { sim, view } = get();
+    if (sim.entry && sim.normal) set({ view: { id: "site", n: view.n + 1, ...siteView(sim.entry, sim.normal, { angle: sim.angle, yaw: sim.yaw }) } });
+  };
+
   return {
     mode: "sim",
     procedure: "venous",
@@ -239,11 +311,9 @@ export const useAtlas = create<AtlasState>((set, get) => {
       const last = capillary ? get().cap.site : get().sim.entry;
       if (capillary) set({ cap: { ...get().cap, site: p, normal: n, phase: "aim", step: 3, wiping: true, cleansedAt: null, puncturedAt: null, result: null } });
       else set({ sim: { ...get().sim, ...freshSim, stage: "cleanse", entry: p, normal: n, angle: get().sim.angle, anchor: get().sim.anchor, gauze: null } });
-      // Bring the camera in close, looking down on the site from the patient's hand, unless it is already there.
+      // Bring the camera in close, with room for the instrument, unless it is already there.
       if (last && Math.hypot(p[0] - last[0], p[1] - last[1], p[2] - last[2]) < 6) return;
-      const back = capillary ? 13 : 21;
-      const along = capillary ? 5 : 11;
-      set({ view: { id: "site", n: get().view.n + 1, target: p, position: [p[0] + n[0] * back + along, p[1] + n[1] * back - 4, p[2] + n[2] * back] } });
+      set({ view: { id: "site", n: get().view.n + 1, ...siteView(p, n, null, capillary ? 2.6 : 4.6) } });
     },
     scrubbed: (amount) => {
       const s = get();
@@ -255,14 +325,21 @@ export const useAtlas = create<AtlasState>((set, get) => {
     cleanse: () => {
       set({ scrub: 1 });
       if (get().procedure === "capillary") set({ cap: { ...get().cap, cleansedAt: Date.now(), wiping: false, step: 4 } });
-      else set({ sim: { ...get().sim, cleansedAt: Date.now(), stage: get().sim.stage === "cleanse" ? "needle" : get().sim.stage } });
+      else {
+        const picksUp = get().sim.stage === "cleanse";
+        set({ sim: { ...get().sim, cleansedAt: Date.now(), stage: picksUp ? "needle" : get().sim.stage } });
+        if (picksUp && !get().demo) showNeedle();
+      }
     },
     stageTo: (stage) => {
       const sim = get().sim;
       if (sim.phase !== "aim" || sim.depth > 0) return;
       if (stage === "tourniquet" || stage === "palpate") set({ palp: null, sim: { ...sim, ...freshSim, stage, anchor: sim.anchor, gauze: sim.gauze } });
       else if (sim.entry && stage === "cleanse") set({ scrub: 0, sim: { ...sim, stage, cleansedAt: null } });
-      else if (sim.entry && stage === "needle") set({ sim: { ...sim, stage } });
+      else if (sim.entry && stage === "needle") {
+        set({ sim: { ...sim, stage } });
+        showNeedle();
+      }
     },
     aim: (p) => {
       const sim = get().sim;
