@@ -2,7 +2,7 @@
 
 import * as THREE from "three";
 import { useEffect, useMemo } from "react";
-import { Canvas } from "@react-three/fiber";
+import { Canvas, useThree } from "@react-three/fiber";
 import { Line, OrbitControls } from "@react-three/drei";
 import type { Analysis } from "@/lib/veinfinder/pipeline";
 
@@ -115,6 +115,17 @@ function Surface({ a, texture, selected, angle }: { a: Analysis; texture: HTMLCa
   );
 }
 
+/** Stands the camera far enough back for the whole width of the photo to be seen, however tall and narrow the view. */
+function Fit() {
+  const camera = useThree((s) => s.camera);
+  const aspect = useThree((s) => s.size.width / Math.max(s.size.height, 1));
+  useEffect(() => {
+    camera.position.set(0, -0.62, 0.72).multiplyScalar(Math.max(1, 1.7 / aspect));
+    camera.updateProjectionMatrix();
+  }, [camera, aspect]);
+  return null;
+}
+
 export default function Relief({ analysis, texture, selected, angle }: { analysis: Analysis; texture: HTMLCanvasElement; selected: number; angle: number }) {
   return (
     <Canvas shadows camera={{ position: [0, -0.62, 0.72], fov: 38, near: 0.01, far: 10, up: [0, 0, 1] }} dpr={[1, 2]}>
@@ -133,8 +144,9 @@ export default function Relief({ analysis, texture, selected, angle }: { analysi
         shadow-bias={-0.0006}
       />
       <directionalLight position={[-0.8, -0.4, 0.5]} intensity={0.6} color="#bcd4ff" />
+      <Fit />
       <Surface a={analysis} texture={texture} selected={selected} angle={angle} />
-      <OrbitControls enableDamping target={[0, 0, 0.03]} minDistance={0.25} maxDistance={2.2} maxPolarAngle={Math.PI * 0.49} />
+      <OrbitControls enableDamping target={[0, 0, 0.03]} minDistance={0.25} maxDistance={3.4} maxPolarAngle={Math.PI * 0.49} />
     </Canvas>
   );
 }
