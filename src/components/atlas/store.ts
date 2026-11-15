@@ -104,9 +104,11 @@ export function siteView(p: Vec3, n: Vec3, instrument: { angle: number; yaw: num
   const W = canvas?.clientWidth || 1424;
   const H = canvas?.clientHeight || 780;
   const wide = typeof window !== "undefined" && window.innerWidth >= WIDE_PX;
-  const clear = wide ? { x0: -W / 2 + 24, x1: W / 2 - PANEL_PX, y0: -H / 2 + 36, y1: H / 2 - 56 } : { x0: -W / 2 + 10, x1: W / 2 - 10, y0: -H / 2 + 12, y1: H / 2 - 50 };
-  // On a wide screen the narration of a demonstration lies across the foot of the canvas.
-  if (wide && useAtlas.getState().demo) clear.y0 += 130;
+  const clear = wide ? { x0: -W / 2 + 24, x1: W / 2 - PANEL_PX, y0: -H / 2 + 36, y1: H / 2 - 56 } : { x0: -W / 2 + 10, x1: W / 2 - 10, y0: -H / 2 + 48, y1: H / 2 - 50 };
+  // The narration of a demonstration may lie across the foot of the canvas.
+  const box = canvas?.getBoundingClientRect();
+  const caption = typeof document === "undefined" ? null : document.querySelector("[data-demo-caption]")?.getBoundingClientRect();
+  if (box && caption && caption.top < box.bottom && caption.bottom > box.top) clear.y0 = Math.min(Math.max(clear.y0, -H / 2 + (box.bottom - caption.top) + 12), clear.y1 - 90);
   // The camera's vertical field of view is 30°.
   const focal = H / (2 * Math.tan(Math.PI / 12));
   const nearest = !instrument ? 11 : instrument.length ? 13 : 20;

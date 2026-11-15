@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
-import { ControlPanel, DemoCaption, InfoPanel, ModeTabs } from "@/components/atlas/Panels";
+import { CameraStrip, ControlPanel, DemoCaption, ExploreControls, InfoPanel, ModeTabs } from "@/components/atlas/Panels";
 import { PracticePanel } from "@/components/atlas/PracticePanel";
 import { playDemo } from "@/components/atlas/demo";
 import { Labels } from "@/components/atlas/Labels";
@@ -12,15 +12,23 @@ const Scene = dynamic(() => import("@/components/atlas/Scene"), { ssr: false });
 
 /**
  * On a wide screen the model fills the page and the panels float over it. On a
- * phone the model has the top of the screen to itself and the panel scrolls
- * beneath it, so neither hides the other.
+ * phone the model and the panel each have their own part of the screen, so
+ * neither hides the other: the model above the panel when the phone is held
+ * upright, beside it when it is turned on its side. The camera views run along
+ * the foot of the model, and in Explore the panel has a second tab for the
+ * layers and display controls.
  */
 export default function AtlasPage() {
   const mode = useAtlas((s) => s.mode);
   const nir = useAtlas((s) => s.nir);
   const ready = useAtlas((s) => s.built.length > 0);
   const demo = useAtlas((s) => !!s.demo);
-  const [controls, setControls] = useState(false);
+  const selected = useAtlas((s) => s.selected);
+  const [tab, setTab] = useState<"structures" | "display">("structures");
+  // Tapping a structure on the model brings its description forward.
+  useEffect(() => {
+    if (selected) setTab("structures");
+  }, [selected]);
 
   useEffect(() => {
     const m = new URLSearchParams(window.location.search).get("mode");
@@ -35,8 +43,8 @@ export default function AtlasPage() {
   }, [ready]);
 
   return (
-    <div className="relative flex h-[calc(100dvh-80px)] flex-col overflow-hidden lg:block" style={{ background: nir ? "#020806" : undefined }}>
-      <div className={`relative shrink-0 lg:absolute lg:inset-0 lg:h-auto ${demo ? "h-[68%]" : "h-[46%]"}`}>
+    <div className="relative flex h-[calc(100dvh-80px)] flex-col overflow-hidden max-lg:landscape:flex-row lg:block" style={{ background: nir ? "#020806" : undefined }}>
+      <div className={`relative shrink-0 lg:absolute lg:inset-0 lg:h-auto lg:w-auto max-lg:landscape:h-full ${demo ? "h-[68%] max-lg:landscape:w-full" : "h-[46%] max-lg:landscape:w-[56%]"}`}>
         <div className="absolute inset-0">
           <Scene />
         </div>
@@ -51,22 +59,53 @@ export default function AtlasPage() {
           </div>
         )}
 
-        <div className="pointer-events-none absolute inset-x-0 top-2 z-10 flex justify-end px-2 lg:top-3 lg:justify-center">
+        <div className="pointer-events-none absolute inset-x-0 top-2 z-10 flex justify-center px-2 lg:top-3">
           <div className="pointer-events-auto">
             <ModeTabs />
           </div>
         </div>
 
-        <button className="chip absolute left-2 top-3 z-20 lg:hidden" data-on={controls} onClick={() => setControls(!controls)}>
-          Views
-        </button>
-        <div className={`absolute bottom-2 left-2 top-12 z-10 lg:bottom-3 lg:left-3 lg:top-3 ${controls ? "block" : "hidden"} lg:block`}>
+        {!demo && (
+          <div className="absolute inset-x-0 bottom-1.5 z-10 lg:hidden">
+            <CameraStrip />
+          </div>
+        )}
+        <div className="absolute bottom-3 left-3 top-3 z-10 hidden lg:block">
           <ControlPanel />
         </div>
       </div>
 
-      <div className={`z-10 min-h-0 flex-1 overflow-y-auto border-t border-white/10 p-2 ${demo ? "hidden lg:flex" : ""} lg:absolute lg:bottom-3 lg:right-3 lg:top-3 lg:flex lg:items-start lg:overflow-visible lg:border-0 lg:p-0`}>
-        {mode === "explore" && <InfoPanel />}
+      <div
+        className={`z-10 min-h-0 flex-1 overflow-y-auto overscroll-contain border-t border-white/10 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] max-lg:landscape:border-l max-lg:landscape:border-t-0 ${demo ? "hidden lg:flex" : ""} lg:absolute lg:bottom-3 lg:right-3 lg:top-3 lg:flex lg:items-start lg:overflow-visible lg:border-0 lg:p-0`}
+      >
+        {mode === "explore" && (
+          <>
+            <div className="mb-2 flex gap-1 rounded-xl bg-white/5 p-1 lg:hidden" role="tablist">
+              {(
+                [
+                  ["structures", "Structures"],
+                  ["display", "Layers and display"],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  role="tab"
+                  aria-selected={tab === id}
+                  onClick={() => setTab(id)}
+                  className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition ${tab === id ? "bg-accent text-ink-950" : "text-slate-300"}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className={`lg:contents ${tab === "structures" ? "" : "max-lg:hidden"}`}>
+              <InfoPanel />
+            </div>
+            <div className={`panel lg:hidden ${tab === "display" ? "" : "hidden"}`}>
+              <ExploreControls />
+            </div>
+          </>
+        )}
         {mode === "sim" && <PracticePanel />}
       </div>
 

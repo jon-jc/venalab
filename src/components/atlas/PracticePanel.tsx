@@ -23,7 +23,7 @@ function Step({ n, title, state = "now", summary, onOpen, children }: { n: numbe
   }, [open]);
   return (
     <section ref={ref} className={`scroll-mt-2 border-b border-white/10 px-4 py-3 last:border-0 ${state === "next" ? "opacity-45" : ""}`}>
-      <button className="flex w-full items-center gap-2 text-left disabled:cursor-default" disabled={open || !onOpen} onClick={onOpen}>
+      <button className="tap-row flex w-full items-center gap-2 text-left disabled:cursor-default" disabled={open || !onOpen} onClick={onOpen}>
         <span className={`grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] font-bold ${state === "done" ? "bg-emerald-400/20 text-emerald-300" : open ? "bg-accent text-ink-950" : "bg-white/10 text-slate-400"}`}>
           {state === "done" ? "✓" : n}
         </span>
@@ -177,7 +177,7 @@ function Venous() {
           <div className="flex items-center justify-between text-xs">
             <Drying at={sim.cleansedAt} now={now} />
             {free && (
-              <button className="text-slate-400 underline-offset-2 hover:text-white hover:underline" onClick={() => stageTo("palpate")}>
+              <button className="tap text-slate-400 underline-offset-2 hover:text-white hover:underline" onClick={() => stageTo("palpate")}>
                 Choose another site
               </button>
             )}
