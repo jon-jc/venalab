@@ -50,7 +50,22 @@ It returns up to five ranked sites with entry point, needle direction, estimated
 A photograph cannot show arteries, nerves, depth or valves, and cannot tell a vein from a tendon or a shadow. Measurements are scaled from a typical limb width and are estimates.
 
 ### Bedside reference — `/reference`
-Order-of-draw trainer, the procedure step by step, site-selection rules, and how to recognise and respond to complications.
+Order-of-draw trainer, the procedure step by step, site-selection rules, and how to recognise and respond to complications. Each section names the standard it follows, and the page ends with the full list of sources.
+
+## Sources
+
+The teaching content is written from published standards and guidelines, and the app cites them where it uses them: beside each step in Practice, and on the reference page.
+
+| Used for | Source |
+| --- | --- |
+| Order of draw, tourniquet time, choice of vein, needle angle | CLSI PRE02, *Collection of Diagnostic Venous Blood Specimens*, 8th ed., 2025 (replaces GP41) |
+| Fingerstick technique | CLSI GP42, *Collection of Capillary Blood Specimens*, 7th ed., 2020 |
+| Steps of a venipuncture, skin antisepsis, lancet depth, capillary collection | *WHO guidelines on drawing blood: best practices in phlebotomy*, 2010, and its job aid on capillary sampling |
+| Single use of needles and collection devices | CDC, *Preventing Unsafe Injection Practices* |
+| Hand hygiene | CDC, *Clinical Safety: Hand Hygiene for Healthcare Workers* |
+| No recapping, immediate sharps disposal | OSHA Bloodborne Pathogens Standard, 29 CFR 1910.1030 |
+
+The CLSI standards are sold rather than free to read; figures attributed to them are those taught from them, and should be checked against the current edition. Where sources differ, the stricter figure is used. VenaLab is not reviewed or endorsed by any of these organisations, and its content has not been reviewed by a clinician.
 
 ## How the model is built
 
@@ -64,7 +79,7 @@ The surface of the arm and hand is taken from a MakeHuman body (CC0), posed in t
 
 Meshing runs in a Web Worker. The coordinate system is `x` proximal→distal (elbow crease at 0), `y` ulnar→radial, `z` posterior→anterior; the model is a left arm in the anatomical position.
 
-Dimensions and relationships follow standard anatomical descriptions and common teaching on venipuncture (CLSI GP41, WHO guidelines on drawing blood). It is a generic adult limb: real anatomy varies, and some calibres are slightly enlarged for legibility.
+Dimensions and relationships follow standard anatomical descriptions and common teaching on venipuncture (see Sources). It is a generic adult limb: real anatomy varies, and some calibres are slightly enlarged for legibility.
 
 ## Running it
 
