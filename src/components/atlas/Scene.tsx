@@ -529,6 +529,9 @@ function Needle() {
           <mesh geometry={kit.Stopper} castShadow>
             <meshPhysicalMaterial color="#b79adf" roughness={0.55} clearcoat={0.2} />
           </mesh>
+          <mesh geometry={kit.StopperRubber}>
+            <meshStandardMaterial color="#4a4354" roughness={0.8} />
+          </mesh>
           <mesh geometry={kit.Label}>
             <meshStandardMaterial color="#f6f4ee" roughness={0.9} side={THREE.DoubleSide} />
           </mesh>
