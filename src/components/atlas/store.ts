@@ -54,6 +54,10 @@ export const LEVELS: Record<Difficulty, { label: string; blurb: string; xray: bo
 
 export const HOVER_MM = -7;
 
+/** Where the collector is in a venipuncture. Each stage puts a different tool in the hand. */
+export type Stage = "tourniquet" | "palpate" | "cleanse" | "needle" | "done";
+export const STAGES: Stage[] = ["tourniquet", "palpate", "cleanse", "needle", "done"];
+
 /** aim: needle in the hand · advancing: demonstration only · done: attempt finished · withdraw: coming out */
 export type Phase = "aim" | "advancing" | "done" | "withdraw";
 
@@ -66,6 +70,7 @@ export interface SimState {
   depth: number;
   gauge: 21 | 22 | 23;
   phase: Phase;
+  stage: Stage;
   reveal: boolean;
   /** Skin pulled taut below the site to hold the vein still. */
   anchor: boolean;
@@ -128,6 +133,8 @@ interface AtlasState {
   /** Mark where the needle (or lancet) will enter. */
   mark: (p: Vec3, n: Vec3) => void;
   cleanse: () => void;
+  /** Go back to an earlier stage, or on to the next, while the needle is not in the arm. */
+  stageTo: (stage: Stage) => void;
   aim: (p: { angle?: number; yaw?: number }) => void;
   setDepth: (mm: number) => void;
   /** Demonstration: push the needle in to a set depth; the scene calls `finish` when it arrives. */
@@ -140,7 +147,7 @@ interface AtlasState {
   capReset: () => void;
 }
 
-const freshSim = { entry: null, normal: null, angle: 25, yaw: 0, depth: HOVER_MM, phase: "aim" as Phase, reveal: false, anchor: false, cleansedAt: null, puncturedAt: null, live: null, worst: null, result: null };
+const freshSim = { entry: null, normal: null, angle: 25, yaw: 0, depth: HOVER_MM, phase: "aim" as Phase, stage: "tourniquet" as Stage, reveal: false, anchor: false, cleansedAt: null, puncturedAt: null, live: null, worst: null, result: null };
 const freshCap: CapState = { site: null, normal: null, phase: "aim", lancet: 2.0, across: true, warmed: false, wiped: false, milking: false, edtaFirst: true, cleansedAt: null, puncturedAt: null, result: null };
 const SEVERITY = { artery: 3, nerve: 2, through: 1 } as Record<string, number>;
 
@@ -219,7 +226,7 @@ export const useAtlas = create<AtlasState>((set, get) => {
       const capillary = get().procedure === "capillary";
       const last = capillary ? get().cap.site : get().sim.entry;
       if (capillary) set({ cap: { ...get().cap, site: p, normal: n, phase: "aim", cleansedAt: null, puncturedAt: null, result: null } });
-      else set({ sim: { ...get().sim, ...freshSim, entry: p, normal: n, angle: get().sim.angle, anchor: get().sim.anchor, gauze: null } });
+      else set({ sim: { ...get().sim, ...freshSim, stage: "cleanse", entry: p, normal: n, angle: get().sim.angle, anchor: get().sim.anchor, gauze: null } });
       // Bring the camera in close, looking down on the site from the patient's hand, unless it is already there.
       if (last && Math.hypot(p[0] - last[0], p[1] - last[1], p[2] - last[2]) < 6) return;
       const back = capillary ? 13 : 21;
@@ -228,21 +235,28 @@ export const useAtlas = create<AtlasState>((set, get) => {
     },
     cleanse: () => {
       if (get().procedure === "capillary") set({ cap: { ...get().cap, cleansedAt: Date.now() } });
-      else set({ sim: { ...get().sim, cleansedAt: Date.now() } });
+      else set({ sim: { ...get().sim, cleansedAt: Date.now(), stage: get().sim.stage === "cleanse" ? "needle" : get().sim.stage } });
+    },
+    stageTo: (stage) => {
+      const sim = get().sim;
+      if (sim.phase !== "aim" || sim.depth > 0) return;
+      if (stage === "tourniquet" || stage === "palpate") set({ palp: null, sim: { ...sim, ...freshSim, stage, anchor: sim.anchor, gauze: sim.gauze } });
+      else if (sim.entry && stage === "cleanse") set({ sim: { ...sim, stage, cleansedAt: null } });
+      else if (sim.entry && stage === "needle") set({ sim: { ...sim, stage } });
     },
     aim: (p) => {
       const sim = get().sim;
       // Once the needle is in the skin it must not be levered about.
-      if (sim.phase === "aim" && sim.depth <= 1.5) set({ sim: probe({ ...sim, ...p }) });
+      if (sim.phase === "aim" && sim.stage === "needle" && sim.depth <= 1.5) set({ sim: probe({ ...sim, ...p }) });
     },
     setDepth: (mm) => {
       const sim = get().sim;
-      if (sim.phase !== "aim" || !sim.entry) return;
+      if (sim.phase !== "aim" || sim.stage !== "needle" || !sim.entry) return;
       set({ sim: probe({ ...sim, depth: Math.min(32, Math.max(HOVER_MM, Math.round(mm * 10) / 10)) }) });
     },
     advance: (to) => {
       const { sim } = get();
-      if (sim.entry && sim.phase === "aim") set({ sim: { ...sim, phase: "advancing", depth: to, result: null, puncturedAt: Date.now() } });
+      if (sim.entry && sim.phase === "aim") set({ sim: { ...sim, phase: "advancing", stage: "needle", depth: to, result: null, puncturedAt: Date.now() } });
     },
     finish: () => {
       const { sim, demo } = get();
@@ -255,6 +269,7 @@ export const useAtlas = create<AtlasState>((set, get) => {
         sim: {
           ...probed,
           phase: "done",
+          stage: "done",
           result,
           reveal: true,
           attempts: sim.attempts + counted,
@@ -275,7 +290,7 @@ export const useAtlas = create<AtlasState>((set, get) => {
         };
       set({ sim: { ...sim, phase: "withdraw", result, gauze: { p: sim.entry, n: sim.normal } } });
     },
-    resetSim: () => set({ sim: { ...get().sim, ...freshSim, result: get().sim.result, reveal: get().sim.reveal && !!get().sim.result } }),
+    resetSim: () => set({ sim: { ...get().sim, ...freshSim, stage: get().sim.result ? "done" : "tourniquet", result: get().sim.result, reveal: get().sim.reveal && !!get().sim.result } }),
     capPuncture: () => {
       const cap = get().cap;
       if (cap.site && cap.phase === "aim") set({ cap: { ...cap, phase: "punctured", puncturedAt: Date.now(), wiped: false } });

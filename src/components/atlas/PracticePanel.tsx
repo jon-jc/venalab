@@ -4,21 +4,28 @@ import { useEffect, useState } from "react";
 import type { Difficulty } from "@/lib/anatomy/patients";
 import type { SimResult } from "@/lib/anatomy/sim";
 import { playDemo, stopDemo } from "./demo";
-import { HOVER_MM, LEVELS, useAtlas } from "./store";
+import { HOVER_MM, LEVELS, STAGES, useAtlas, type Stage } from "./store";
 
 const TONE_STYLE = { good: "border-emerald-400/40 bg-emerald-400/10", warn: "border-amber-400/40 bg-amber-400/10", bad: "border-rose-400/50 bg-rose-400/10" };
 const PALP_COLOR = { vein: "#7fa2ff", artery: "#ff4d57", tendon: "#efe7d6", none: "#64748b" };
 const DIFFICULTIES: Difficulty[] = ["beginner", "intermediate", "advanced", "expert"];
 
-const Step = ({ n, title, children }: { n: number; title: string; children: React.ReactNode }) => (
-  <section className="border-b border-white/10 px-4 py-3 last:border-0">
-    <h3 className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-widest text-slate-400">
-      <span className="grid h-4 w-4 place-items-center rounded-full bg-accent/20 text-[10px] text-accent">{n}</span>
-      {title}
-    </h3>
-    {children}
-  </section>
-);
+/** One step of the procedure. Only the current step is open; finished steps show a one-line summary. */
+function Step({ n, title, state = "now", summary, onOpen, children }: { n: number; title: string; state?: "done" | "now" | "next"; summary?: React.ReactNode; onOpen?: () => void; children: React.ReactNode }) {
+  const open = state === "now";
+  return (
+    <section className={`border-b border-white/10 px-4 py-3 last:border-0 ${state === "next" ? "opacity-45" : ""}`}>
+      <button className="flex w-full items-center gap-2 text-left disabled:cursor-default" disabled={open || !onOpen} onClick={onOpen}>
+        <span className={`grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] font-bold ${state === "done" ? "bg-emerald-400/20 text-emerald-300" : open ? "bg-accent text-ink-950" : "bg-white/10 text-slate-400"}`}>
+          {state === "done" ? "✓" : n}
+        </span>
+        <span className={`text-[11px] font-semibold uppercase tracking-widest ${open ? "text-white" : "text-slate-400"}`}>{title}</span>
+        {!open && summary && <span className="ml-auto text-xs text-slate-400">{summary}</span>}
+      </button>
+      {open && <div className="mt-2.5">{children}</div>}
+    </section>
+  );
+}
 
 const Chip = ({ on, onClick, disabled, children }: { on?: boolean; onClick: () => void; disabled?: boolean; children: React.ReactNode }) => (
   <button className="chip disabled:cursor-not-allowed disabled:opacity-40" data-on={!!on} disabled={disabled} onClick={onClick}>
@@ -70,14 +77,27 @@ function Venous() {
   const tourniquetAt = useAtlas((s) => s.tourniquetAt);
   const demo = useAtlas((s) => s.demo);
   const level = useAtlas((s) => LEVELS[s.difficulty]);
-  const { set, setSim, aim, setDepth, cleanse, finish, withdraw, newPatient } = useAtlas.getState();
+  const { set, setSim, aim, setDepth, cleanse, finish, withdraw, newPatient, stageTo } = useAtlas.getState();
   const now = useNow(tourniquet || !!sim.cleansedAt);
 
+  const stage = sim.stage;
+  const at = STAGES.indexOf(stage);
+  const state = (s: Stage) => (STAGES.indexOf(s) < at ? "done" : s === stage ? "now" : "next");
   const held = sim.phase === "aim" && !demo;
   const inSkin = sim.depth > 0;
+  const free = held && !inSkin;
   const onTime = tourniquetAt ? Math.round((now - tourniquetAt) / 1000) : 0;
+  const clock = <span className={`font-semibold tabular-nums ${onTime > 60 ? "text-rose-300" : onTime > 45 ? "text-amber-300" : "text-slate-200"}`}>{onTime} s</span>;
   const live = sim.live?.outcome;
   const status = !inSkin ? "Needle above the skin." : live === "success" || live === "artery" ? "Blood in the hub. Hold still and let the tube fill." : live === "through" ? "The flash has stopped." : "In the tissue — no blood yet.";
+  const release = tourniquet && (
+    <div className="mt-2 flex items-center gap-3 text-xs">
+      <Chip on onClick={() => set({ tourniquet: false })}>
+        Release tourniquet
+      </Chip>
+      {clock}
+    </div>
+  );
 
   return (
     <>
@@ -87,53 +107,74 @@ function Venous() {
         </button>
       </div>
 
-      <div className={demo ? "pointer-events-none opacity-40" : ""}>
-        <Step n={1} title="Tourniquet">
-          <div className="flex items-center gap-3">
-            <Chip on={tourniquet} onClick={() => set({ tourniquet: !tourniquet })}>
-              {tourniquet ? "Release tourniquet" : "Apply tourniquet"}
-            </Chip>
-            {tourniquet && <span className={`text-sm font-semibold tabular-nums ${onTime > 60 ? "text-rose-300" : onTime > 45 ? "text-amber-300" : "text-slate-200"}`}>{onTime} s</span>}
+      <div className={demo ? "pointer-events-none opacity-50" : ""}>
+        <Step n={1} title="Tourniquet" state={state("tourniquet")} summary={tourniquet ? <>On · {clock}</> : "Not applied"} onOpen={free ? () => stageTo("tourniquet") : undefined}>
+          <p className="text-sm text-slate-200">Apply it 7.5–10 cm above where you expect to draw. The veins fill within seconds.</p>
+          <div className="mt-3 flex gap-2">
+            <button
+              className="btn flex-1"
+              onClick={() => {
+                set({ tourniquet: true });
+                stageTo("palpate");
+              }}
+            >
+              Apply tourniquet
+            </button>
+            <button className="btn btn-ghost" onClick={() => stageTo("palpate")}>
+              Skip
+            </button>
           </div>
-          <p className="mt-2 text-[11px] text-slate-500">No longer than 1 minute. Release it as soon as blood is flowing.</p>
+          <p className="mt-2 text-[11px] text-slate-500">It must not stay on for more than 1 minute — a clock starts as soon as it is on.</p>
         </Step>
 
-        <Step n={2} title="Palpate">
-          <p className="text-xs text-slate-400">Move the pointer over the arm. Veins are soft and bouncy, arteries pulse, tendons are hard cords.</p>
+        <Step n={2} title="Find the vein" state={state("palpate")} summary={sim.entry ? "Site marked" : "—"} onOpen={free ? () => stageTo("palpate") : undefined}>
+          <p className="text-sm text-slate-200">Run your fingertip over the arm. When you have found the vein you want, click it to mark the puncture site.</p>
           <div className="mt-2 flex min-h-[52px] items-center gap-2 rounded-lg bg-white/5 px-3 py-2 text-sm">
             <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: PALP_COLOR[palp?.kind ?? "none"] }} />
             <span className="text-slate-200">
-              {palp?.text ?? "Hover over the arm to palpate."}
+              {palp?.text ?? "Move the pointer over the arm to palpate."}
               {level.numbers && palp?.detail && <span className="block text-[11px] text-slate-400">{palp.detail}</span>}
             </span>
           </div>
+          <p className="mt-2 text-[11px] text-slate-500">A vein is soft and bouncy. A pulse means artery. A hard cord is tendon.</p>
+          {release}
         </Step>
 
-        <Step n={3} title="Site and cleansing">
-          <p className="text-sm text-slate-200">{sim.entry ? "Site marked. Click elsewhere on the skin to move it." : "Click the skin where the needle should enter."}</p>
-          <div className="mt-2 flex items-center gap-3 text-xs">
-            <Chip onClick={cleanse} disabled={!sim.entry || inSkin}>
+        <Step n={3} title="Cleanse the site" state={state("cleanse")} summary={<Drying at={sim.cleansedAt} now={now} />} onOpen={free && sim.entry ? () => stageTo("cleanse") : undefined}>
+          <p className="text-sm text-slate-200">Scrub the site with 70% isopropyl alcohol, then let it dry before you puncture.</p>
+          <div className="mt-3 flex gap-2">
+            <button className="btn flex-1" onClick={cleanse}>
               Cleanse with alcohol
-            </Chip>
-            <Drying at={sim.cleansedAt} now={now} />
+            </button>
+            <button className="btn btn-ghost" onClick={() => stageTo("needle")}>
+              Skip
+            </button>
           </div>
         </Step>
 
-        <Step n={4} title="Needle">
-          <div className="flex flex-wrap items-center gap-1.5">
+        <Step n={4} title="Needle" state={state("needle")} summary={sim.result ? "Attempt finished" : "—"}>
+          <div className="flex items-center justify-between text-xs">
+            <Drying at={sim.cleansedAt} now={now} />
+            {free && (
+              <button className="text-slate-400 underline-offset-2 hover:text-white hover:underline" onClick={() => stageTo("palpate")}>
+                Choose another site
+              </button>
+            )}
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
             {([21, 22, 23] as const).map((g) => (
-              <Chip key={g} on={sim.gauge === g} disabled={inSkin || !held} onClick={() => setSim({ gauge: g })}>
+              <Chip key={g} on={sim.gauge === g} disabled={!free} onClick={() => setSim({ gauge: g })}>
                 {g}G{g === 23 ? " winged" : ""}
               </Chip>
             ))}
-            <Chip on={sim.anchor} disabled={inSkin || !held} onClick={() => setSim({ anchor: !sim.anchor })}>
+            <Chip on={sim.anchor} disabled={!free} onClick={() => setSim({ anchor: !sim.anchor })}>
               Anchor vein
             </Chip>
           </div>
           <p className="mt-2 rounded-lg bg-white/5 px-3 py-2 text-[12px] leading-relaxed text-slate-300">
             <b className="text-white">Hold the needle:</b> drag the holder (teal ring) to tilt and aim it about the site. Drag the end of the tube (amber ring) to push it in and draw it back — or scroll over it, or press ↑ ↓.
           </p>
-          <div className={`mt-2 space-y-2 text-xs text-slate-300 ${held && sim.entry ? "" : "pointer-events-none opacity-50"}`}>
+          <div className={`mt-2 space-y-2 text-xs text-slate-300 ${held ? "" : "pointer-events-none opacity-50"}`}>
             <label className="block">
               <span className="flex justify-between"><span>Angle to skin</span><b>{sim.angle}°</b></span>
               <input type="range" min={3} max={85} value={sim.angle} disabled={sim.depth > 1.5} onChange={(e) => aim({ angle: +e.target.value })} />
@@ -147,18 +188,13 @@ function Venous() {
               <input type="range" min={HOVER_MM} max={30} step={0.5} value={sim.depth} onChange={(e) => setDepth(+e.target.value)} />
             </label>
           </div>
-          {level.hints && sim.entry && held && <p className={`mt-2 text-xs ${live === "success" ? "text-emerald-300" : "text-slate-400"}`}>{status}</p>}
+          {level.hints && held && <p className={`mt-2 text-xs ${live === "success" ? "text-emerald-300" : "text-slate-400"}`}>{status}</p>}
+          {release}
           <div className="mt-3 flex gap-2">
-            {sim.phase === "done" ? (
-              <button className="btn flex-1" onClick={withdraw}>
-                Withdraw needle
-              </button>
-            ) : (
-              <button className="btn flex-1" disabled={!held || !inSkin} onClick={finish}>
-                {sim.phase === "advancing" ? "Advancing…" : "Finish attempt"}
-              </button>
-            )}
-            <button className="btn btn-ghost" disabled={!level.xray && !sim.result} title={level.xray || sim.result ? "" : "Not available at this level until you finish"} onClick={() => setSim({ reveal: !sim.reveal })}>
+            <button className="btn flex-1" disabled={!held || !inSkin} onClick={finish}>
+              {sim.phase === "advancing" ? "Advancing…" : "Finish attempt"}
+            </button>
+            <button className="btn btn-ghost" disabled={!level.xray} title={level.xray ? "" : "Not available at this level until you finish"} onClick={() => setSim({ reveal: !sim.reveal })}>
               {sim.reveal ? "Hide anatomy" : "X-ray"}
             </button>
           </div>
@@ -168,7 +204,18 @@ function Venous() {
       {sim.result && !demo && (
         <Debrief r={sim.result}>
           <p className="mt-2 text-[11px] text-slate-400">Needle tip {sim.result.tipDepthMm.toFixed(1)} mm beneath the skin.</p>
-          <button className="btn btn-ghost mt-3 w-full" onClick={newPatient}>
+          {release}
+          <div className="mt-3 flex gap-2">
+            {sim.phase === "done" && (
+              <button className="btn flex-1" onClick={withdraw}>
+                Withdraw needle
+              </button>
+            )}
+            <button className="btn btn-ghost flex-1" onClick={() => setSim({ reveal: !sim.reveal })}>
+              {sim.reveal ? "Hide anatomy" : "X-ray"}
+            </button>
+          </div>
+          <button className="btn btn-ghost mt-2 w-full" onClick={newPatient}>
             Next patient
           </button>
         </Debrief>
