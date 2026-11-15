@@ -359,40 +359,75 @@ export function buildStructures(pattern: Pattern, body: Body = AVERAGE): Built[]
   });
 }
 
-/** Fingernails: thin plates set into the back of each fingertip. */
+/**
+ * Fingernails. Each nail is a thin plate laid on the skin of the fingertip
+ * itself: a grid of points is cast from the axis of the last phalanx out to the
+ * surface, so the plate follows the curve of the finger and never sinks into it.
+ */
 export function buildNails(): THREE.BufferGeometry {
+  const NU = 20;
+  const NV = 16;
+  const step = (a: number, b: number, v: number) => {
+    const t = Math.min(Math.max((v - a) / (b - a), 0), 1);
+    return t * t * (3 - 2 * t);
+  };
   const parts = DIGITS.map((d, i) => {
     const a = new THREE.Vector3(...d.joints[2]);
     const b = new THREE.Vector3(...d.joints[3]);
     const axis = b.clone().sub(a);
     const len = axis.length();
     axis.normalize();
+    // The thumb is turned: its nail faces outward as much as backward.
     const back = (i === 0 ? new THREE.Vector3(0, 0.72, -0.7) : new THREE.Vector3(0, 0, -1)).clone();
     back.addScaledVector(axis, -back.dot(axis)).normalize();
     const side = new THREE.Vector3().crossVectors(back, axis);
-    const r = d.radii[2] + (d.radii[3] - d.radii[2]) * 0.6;
-    const thick = r * 0.32;
-    const surface = i === 0 ? r : r / FINGER_FLATTEN;
-    const g = new THREE.SphereGeometry(1, 48, 28);
-    g.deleteAttribute("uv");
-    // Pink nail bed, a paler lunula at the root and a white free edge at the tip.
-    const local = g.getAttribute("position");
-    const col = new Float32Array(local.count * 3);
-    const step = (a: number, b: number, v: number) => {
-      const t = Math.min(Math.max((v - a) / (b - a), 0), 1);
-      return t * t * (3 - 2 * t);
-    };
-    for (let v = 0; v < local.count; v++) {
-      const edge = step(0.6, 0.76, local.getX(v));
-      const lunula = 1 - step(0.34, 0.5, Math.hypot(local.getX(v) + 1.05, local.getY(v) * 0.85));
-      const bed = [1, 0.82, 0.8], pale = [1, 0.95, 0.93];
-      for (let c = 0; c < 3; c++) col[v * 3 + c] = (bed[c] + (pale[c] - bed[c]) * lunula) * (1 - edge) + edge;
-    }
-    g.setAttribute("color", new THREE.BufferAttribute(col, 3));
-    g.scale(len * 0.42 + 0.12, r * 0.74, thick);
-    g.applyMatrix4(new THREE.Matrix4().makeBasis(axis, side, back));
-    const c = a.addScaledVector(axis, len * 0.62).addScaledVector(back, surface - thick + 0.035);
-    g.translate(c.x, c.y, c.z);
+    const tip = d.radii[3];
+    const pos: number[] = [];
+    const col: number[] = [];
+    const idx: number[] = [];
+    const o = new THREE.Vector3();
+    const ray = new THREE.Vector3();
+    for (let iu = 0; iu <= NU; iu++)
+      for (let iv = 0; iv <= NV; iv++) {
+        // A square grid pulled into the outline of a nail: rounded at the root, squarer at the free edge.
+        const s = -1 + (2 * iv) / NV;
+        const t = -1 + (2 * iu) / NU;
+        const across = s * Math.sqrt(1 - 0.5 * t * t * (t < 0 ? 1 : 0.3));
+        const along = t * Math.sqrt(1 - 0.5 * s * s * (t < 0 ? 1 : 0.18));
+        // From 42% of the way along the phalanx to just over the end of the finger.
+        const reach = len * 0.42 + ((along + 1) / 2) * (len * 0.58 + tip * 0.6);
+        const over = Math.max(reach - len, 0) / tip;
+        const phi = across * 0.9;
+        o.copy(a).addScaledVector(axis, Math.min(reach, len));
+        ray.copy(back).multiplyScalar(Math.cos(phi)).addScaledVector(side, Math.sin(phi));
+        ray.multiplyScalar(Math.cos(over)).addScaledVector(axis, Math.sin(over)).normalize();
+        let lo = 0;
+        let hi = tip * 2.4;
+        for (let k = 0; k < 22; k++) {
+          const mid = (lo + hi) / 2;
+          if (skinSDF(o.x + ray.x * mid, o.y + ray.y * mid, o.z + ray.z * mid) < 0) lo = mid;
+          else hi = mid;
+        }
+        // Raised a hair above the skin, with a little extra arch across the nail.
+        const r = lo + 0.03 + 0.022 * (1 - across * across);
+        pos.push(o.x + ray.x * r, o.y + ray.y * r, o.z + ray.z * r);
+        // Pink nail bed, a paler lunula at the root and a white free edge.
+        const edge = step(0.66, 0.82, along);
+        const lunula = 1 - step(0.3, 0.5, Math.hypot(along + 1.05, across * 0.85));
+        const bed = [0.98, 0.76, 0.74];
+        const pale = [1, 0.95, 0.93];
+        for (let c = 0; c < 3; c++) col.push((bed[c] + (pale[c] - bed[c]) * lunula) * (1 - edge) + edge);
+      }
+    for (let iu = 0; iu < NU; iu++)
+      for (let iv = 0; iv < NV; iv++) {
+        const p = iu * (NV + 1) + iv;
+        idx.push(p, p + 1, p + NV + 2, p, p + NV + 2, p + NV + 1);
+      }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+    g.setIndex(idx);
+    g.computeVertexNormals();
     return g;
   });
   return mergeGeometries(parts, false)!;
