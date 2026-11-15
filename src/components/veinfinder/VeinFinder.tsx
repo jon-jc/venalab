@@ -134,6 +134,7 @@ export default function VeinFinder() {
   const [busy, setBusy] = useState(false);
   const [drag, setDrag] = useState(false);
   const canvas = useRef<HTMLCanvasElement>(null);
+  const stage = useRef<HTMLElement>(null);
   const [texture, setTexture] = useState<HTMLCanvasElement | null>(null);
 
   const load = useCallback((image: CanvasImageSource, iw: number, ih: number) => {
@@ -147,6 +148,8 @@ export default function VeinFinder() {
     setHeart(0);
     setSelected(0);
     setSource(c);
+    // On a phone the image is below the fold: bring it into view once there is one to see.
+    if (window.innerWidth < 1024) setTimeout(() => stage.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
   }, []);
 
   const loadFile = useCallback(
@@ -203,7 +206,8 @@ export default function VeinFinder() {
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="text-accent" aria-hidden>
               <path d="M12 16V4m0 0 4 4m-4-4L8 8M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
-            <span className="mt-2 text-sm font-medium">Upload or drop a photo</span>
+            <span className="mt-2 text-sm font-medium lg:hidden">Take or choose a photo</span>
+            <span className="mt-2 hidden text-sm font-medium lg:inline">Upload or drop a photo</span>
             <span className="mt-0.5 text-[11px] text-slate-400">JPEG, PNG, HEIC · or take one with your camera</span>
             <input type="file" accept="image/*" className="hidden" onChange={(e) => loadFile(e.target.files?.[0])} />
           </label>
@@ -255,18 +259,18 @@ export default function VeinFinder() {
       </aside>
 
       {/* ── Image ── */}
-      <section className="panel relative flex min-h-[420px] flex-col self-start overflow-hidden lg:sticky lg:top-[96px]">
-        <div className="flex items-center justify-between gap-2 border-b border-white/10 px-3 py-2">
-          <div className="flex gap-1">
+      <section ref={stage} className="panel relative flex min-h-[260px] w-full scroll-mt-[88px] flex-col self-start overflow-hidden lg:sticky lg:top-[96px] lg:min-h-[420px]">
+        <div className="flex items-center justify-between gap-2 border-b border-white/10 px-2 py-2 sm:px-3">
+          <div className="no-scrollbar flex min-w-0 gap-1 overflow-x-auto">
             {VIEWS.map(([id, label]) => (
-              <button key={id} disabled={!analysis} onClick={() => setView(id)} className={`rounded-lg px-3 py-1.5 text-sm transition disabled:opacity-40 ${view === id ? "bg-accent text-ink-950" : "text-slate-300 hover:bg-white/5"}`}>
+              <button key={id} disabled={!analysis} onClick={() => setView(id)} className={`shrink-0 whitespace-nowrap rounded-lg px-2.5 py-2 text-[13px] transition disabled:opacity-40 sm:px-3 sm:py-1.5 sm:text-sm ${view === id ? "bg-accent text-ink-950" : "text-slate-300 hover:bg-white/5"}`}>
                 {label}
               </button>
             ))}
           </div>
-          {analysis && <span className="text-[11px] text-slate-500">{analysis.width}×{analysis.height} · {Math.round(analysis.ms)} ms · ≈ {(1 / analysis.mmPerPx).toFixed(1)} px/mm</span>}
+          {analysis && <span className="hidden shrink-0 text-[11px] text-slate-500 sm:inline">{analysis.width}×{analysis.height} · {Math.round(analysis.ms)} ms · ≈ {(1 / analysis.mmPerPx).toFixed(1)} px/mm</span>}
         </div>
-        <div className="relative grid min-h-[380px] flex-1 place-items-center bg-black/30 p-3">
+        <div className="relative grid min-h-[200px] flex-1 place-items-center bg-black/30 p-2 sm:p-3 lg:min-h-[380px]">
           {!source && (
             <div className="max-w-sm text-center text-sm text-slate-400">
               <p className="text-base font-medium text-slate-200">No image yet</p>
@@ -275,7 +279,7 @@ export default function VeinFinder() {
           )}
           {source && view !== "relief" && <canvas ref={canvas} className="max-h-[72vh] w-full rounded-lg object-contain" style={{ aspectRatio: `${source.width} / ${source.height}` }} />}
           {source && analysis && view === "relief" && texture && (
-            <div className="h-[72vh] w-full overflow-hidden rounded-lg bg-gradient-to-b from-ink-800 to-ink-950">
+            <div className="h-[52vh] w-full overflow-hidden rounded-lg bg-gradient-to-b from-ink-800 to-ink-950 lg:h-[72vh]">
               <Relief analysis={analysis} texture={texture} selected={selected} angle={angle} />
             </div>
           )}
@@ -285,7 +289,8 @@ export default function VeinFinder() {
             </div>
           )}
         </div>
-        {view === "relief" && analysis && <p className="border-t border-white/10 px-3 py-2 text-[11px] text-slate-500">Relief reconstructed from the photo: the limb is raised by its distance from the outline and veins stand proud. Drag to orbit, scroll to zoom. The needle is posed at {angle}° on the selected site.</p>}
+        {view === "relief" && analysis && <p className="border-t border-white/10 px-3 py-2 text-[11px] text-slate-500">Relief reconstructed from the photo: the limb is raised by its distance from the outline and veins stand proud. Drag to orbit; scroll or pinch to zoom. The needle is posed at {angle}° on the selected site.</p>}
+        {analysis && view !== "relief" && <p className="border-t border-white/10 px-3 py-2 text-[11px] text-slate-500 sm:hidden">{analysis.width}×{analysis.height} · {Math.round(analysis.ms)} ms · ≈ {(1 / analysis.mmPerPx).toFixed(1)} px/mm</p>}
       </section>
 
       {/* ── Results ── */}
