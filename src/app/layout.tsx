@@ -19,7 +19,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body className="flex min-h-screen flex-col">
         <header className="sticky top-0 z-40 border-b border-white/10 bg-ink-950/80 backdrop-blur">
-          <div className="mx-auto flex h-14 max-w-[1600px] items-center justify-between px-4">
+          <div className="mx-auto flex h-14 max-w-[1600px] items-center justify-between px-3 sm:px-4">
             <Link href="/atlas" className="flex items-center gap-2 font-semibold tracking-tight">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
                 <path
@@ -35,12 +35,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </svg>
               <span>VenaLab</span>
             </Link>
-            <nav className="flex items-center gap-1 text-sm">
+            <nav className="flex items-center text-[13px] sm:gap-1 sm:text-sm">
               {NAV.map((n) => (
                 <Link
                   key={n.href}
                   href={n.href}
-                  className="rounded-lg px-3 py-1.5 text-slate-300 transition hover:bg-white/5 hover:text-white"
+                  className="whitespace-nowrap rounded-lg px-2 py-1.5 text-slate-300 transition hover:bg-white/5 hover:text-white sm:px-3"
                 >
                   {n.label}
                 </Link>

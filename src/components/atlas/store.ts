@@ -95,9 +95,13 @@ export function siteView(p: Vec3, n: Vec3, instrument: { angle: number; yaw: num
   }
 
   // The clear part of the canvas, in pixels from its centre (x to the right, y upward).
-  const W = typeof window === "undefined" ? 1440 : window.innerWidth;
-  const H = (typeof window === "undefined" ? 860 : window.innerHeight) - 80;
-  const clear = W >= WIDE_PX ? { x0: -W / 2 + 24, x1: W / 2 - PANEL_PX, y0: -H / 2 + 36, y1: H / 2 - 56 } : { x0: -W / 2 + 8, x1: W / 2 - 8, y0: H / 2 - H * 0.5, y1: H / 2 - 60 };
+  // On a wide screen the practice panel floats over its right-hand side; on a
+  // narrow one the panel is beneath the canvas and only the tabs overlap it.
+  const canvas = typeof document === "undefined" ? null : document.querySelector("canvas");
+  const W = canvas?.clientWidth || 1424;
+  const H = canvas?.clientHeight || 780;
+  const wide = typeof window !== "undefined" && window.innerWidth >= WIDE_PX;
+  const clear = wide ? { x0: -W / 2 + 24, x1: W / 2 - PANEL_PX, y0: -H / 2 + 36, y1: H / 2 - 56 } : { x0: -W / 2 + 10, x1: W / 2 - 10, y0: -H / 2 + 12, y1: H / 2 - 50 };
   // The camera's vertical field of view is 30°.
   const focal = H / (2 * Math.tan(Math.PI / 12));
   const nearest = instrument ? 20 : 11;
