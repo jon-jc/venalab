@@ -7,8 +7,10 @@
  *   z  anterior / palmar (+) → posterior / dorsal (−)
  *
  * The shape is a modelled human arm and hand, held as a signed distance field
- * sampled on a regular grid. Deeper tissue planes are iso-surfaces of the same
- * field, so every layer follows the skin.
+ * sampled on a regular grid, with the surface anatomy a phlebotomist looks for
+ * raised on it: tendons, bony points, knuckles and the hollows of the elbow.
+ * Deeper tissue planes are iso-surfaces of the same field, so every layer
+ * follows the skin.
  *
  * The anatomy in structures.ts is laid out on a simpler reference limb, a loft
  * of measured cross-sections. `fit` carries a point of that layout onto this
@@ -61,6 +63,7 @@ export function loadLimb(): Promise<void> {
       h: v.getFloat32(28, true),
       unit: v.getFloat32(32, true),
     };
+    relief = surfaceAnatomy();
     cachedField = null;
   })();
   return pending;
@@ -254,45 +257,132 @@ function smin(a: number, b: number, k: number): number {
   return Math.min(a, b) - h * h * k * 0.25;
 }
 
+type Ball = { c: Vec3; r: number; k: number };
+type Cord = { a: Vec3; b: Vec3; r: number; k: number };
+type Feature = { ball: Ball } | { cord: Cord } | { hollow: Ball };
+
+/** Surface anatomy, listed for each centimetre of the limb it can reach. */
+let relief: Feature[][] | null = null;
+const RELIEF_X0 = -24;
+
+/**
+ * Tendons that stand out under thin skin, bony points, knuckles and hollows.
+ * Each is placed from the skin itself: a set distance beneath it, or above it
+ * for the spheres that press the hollows in.
+ */
+function surfaceAnatomy(): Feature[][] {
+  const S = (x: number, theta: number, depth: number) => limbPoint(sample, x, theta, depth, 2.4);
+  const D = (x: number, y: number, depth: number) => dorsumPoint(sample, x, y, depth);
+  // How far a feature stands out depends on how far its top lies beneath the
+  // skin and on its blend, so each is given the depth of its centre.
+  const features: Feature[] = [
+    { cord: { a: S(19.5, 90, 0.52), b: S(26.2, 89, 0.36), r: 0.3, k: 0.5 } }, // palmaris longus
+    { cord: { a: S(19.5, 62, 0.55), b: S(26.3, 52, 0.4), r: 0.32, k: 0.5 } }, // flexor carpi radialis
+    { cord: { a: S(21, 148, 0.6), b: S(26.4, 153, 0.46), r: 0.34, k: 0.5 } }, // flexor carpi ulnaris
+    { cord: { a: S(-4.5, 82, 0.7), b: S(1.2, 72, 0.95), r: 0.5, k: 0.8 } }, // biceps tendon
+    // extensor tendons fanning across the back of the hand to each knuckle
+    ...DIGITS.slice(1).map((d): Feature => ({ cord: { a: D(WRIST[0] + 1.2, d.knuckle[1] * 0.28, 0.56), b: D(d.knuckle[0] - 0.6, d.knuckle[1], 0.56), r: 0.4, k: 0.5 } })),
+    { ball: { c: S(-1.2, 263, 1.35), r: 1.25, k: 1.0 } }, // olecranon
+    { ball: { c: S(-0.9, 188, 1.24), r: 1.0, k: 0.9 } }, // medial epicondyle
+    { ball: { c: S(25.0, 207, 0.9), r: 0.9, k: 0.6 } }, // head of ulna
+    { ball: { c: S(26.0, -3, 0.96), r: 0.8, k: 0.6 } }, // radial styloid
+    ...DIGITS.slice(1).map((d): Feature => ({ ball: { c: [d.knuckle[0], d.knuckle[1], d.knuckle[2] + 0.8], r: 0.8, k: 0.5 } })), // knuckles
+    { hollow: { c: S(2.3, 80, -2.0), r: 2.0, k: 0.8 } }, // cubital fossa, beside brachioradialis
+    { hollow: { c: S(2.6, 104, -1.8), r: 1.8, k: 0.8 } }, // cubital fossa, medial to the biceps tendon
+  ];
+  const bins: Feature[][] = Array.from({ length: 76 }, () => []);
+  for (const f of features) {
+    let lo: number;
+    let hi: number;
+    if ("cord" in f) {
+      lo = Math.min(f.cord.a[0], f.cord.b[0]) - f.cord.r - f.cord.k;
+      hi = Math.max(f.cord.a[0], f.cord.b[0]) + f.cord.r + f.cord.k;
+    } else {
+      const b = "ball" in f ? f.ball : f.hollow;
+      lo = b.c[0] - b.r - b.k;
+      hi = b.c[0] + b.r + b.k;
+    }
+    for (let i = Math.max(Math.floor(lo - RELIEF_X0), 0); i <= Math.min(Math.floor(hi - RELIEF_X0), bins.length - 1); i++) bins[i].push(f);
+  }
+  return bins;
+}
+
+/** The modelled limb at an average build: the stored field with the surface anatomy on it. */
+function limb(x: number, y: number, z: number): number {
+  let d = sample(x, y, z);
+  // Nothing raised on the skin reaches further than this from it.
+  if (!relief || d > 2.4 || d < -3.2) return d;
+  const here = relief[Math.floor(x - RELIEF_X0)];
+  if (!here) return d;
+  for (const f of here) {
+    if ("ball" in f) {
+      const { c, r, k } = f.ball;
+      const dd = Math.hypot(x - c[0], y - c[1], z - c[2]) - r;
+      if (dd < d + k) d = smin(d, dd, k);
+    } else if ("cord" in f) {
+      const { a, b, r, k } = f.cord;
+      const abx = b[0] - a[0], aby = b[1] - a[1], abz = b[2] - a[2];
+      const t = Math.min(Math.max(((x - a[0]) * abx + (y - a[1]) * aby + (z - a[2]) * abz) / (abx * abx + aby * aby + abz * abz), 0), 1);
+      const dd = Math.hypot(x - a[0] - abx * t, y - a[1] - aby * t, z - a[2] - abz * t) - r;
+      if (dd < d + k) d = smin(d, dd, k);
+    } else {
+      // Carving is a smooth maximum of the limb and the inside of the sphere.
+      const { c, r, k } = f.hollow;
+      const inside = r - Math.hypot(x - c[0], y - c[1], z - c[2]);
+      if (inside > d - k) d = -smin(-d, -inside, k);
+    }
+  }
+  return d;
+}
+
 /** Signed distance (cm) to the skin surface: negative inside the limb. */
 export function skinSDF(x: number, y: number, z: number): number {
   if (!grid) return 1;
   let d: number;
   const s = GIRTH === 1 ? 1 : bulk(x);
-  if (s === 1) d = sample(x, y, z);
+  if (s === 1) d = limb(x, y, z);
   else {
     // A heavier or leaner arm is the same section, scaled about its centre.
     section(x);
-    d = s * sample(x, secY + (y - secY) / s, secZ + (z - secZ) / s);
+    d = s * limb(x, secY + (y - secY) / s, secZ + (z - secZ) / s);
   }
   // The limb is cut through the upper arm; the rim of the cut is rounded.
   const cut = X_PROXIMAL - x;
   return cut > d - 0.7 ? -smin(-d, -cut, 0.7) : d;
 }
 
+type Scalar = (x: number, y: number, z: number) => number;
 const E = 0.15;
 
-/** Unit outward normal of the skin field at a point. */
-export function skinNormal(x: number, y: number, z: number): Vec3 {
-  const gx = skinSDF(x + E, y, z) - skinSDF(x - E, y, z);
-  const gy = skinSDF(x, y + E, z) - skinSDF(x, y - E, z);
-  const gz = skinSDF(x, y, z + E) - skinSDF(x, y, z - E);
+function normalOf(f: Scalar, x: number, y: number, z: number): Vec3 {
+  const gx = f(x + E, y, z) - f(x - E, y, z);
+  const gy = f(x, y + E, z) - f(x, y - E, z);
+  const gz = f(x, y, z + E) - f(x, y, z - E);
   const l = Math.hypot(gx, gy, gz) || 1;
   return [gx / l, gy / l, gz / l];
 }
 
-/** Move a point along the field gradient until it sits `depth` cm beneath the skin. */
-export function projectToDepth(p: Vec3, depth: number, iterations = 4): Vec3 {
+function toDepth(f: Scalar, p: Vec3, depth: number, iterations = 4): Vec3 {
   let [x, y, z] = p;
   for (let i = 0; i < iterations; i++) {
-    const err = -depth - skinSDF(x, y, z);
+    const err = -depth - f(x, y, z);
     if (Math.abs(err) < 1e-3) break;
-    const n = skinNormal(x, y, z);
+    const n = normalOf(f, x, y, z);
     x += n[0] * err;
     y += n[1] * err;
     z += n[2] * err;
   }
   return [x, y, z];
+}
+
+/** Unit outward normal of the skin field at a point. */
+export function skinNormal(x: number, y: number, z: number): Vec3 {
+  return normalOf(skinSDF, x, y, z);
+}
+
+/** Move a point along the field gradient until it sits `depth` cm beneath the skin. */
+export function projectToDepth(p: Vec3, depth: number, iterations = 4): Vec3 {
+  return toDepth(skinSDF, p, depth, iterations);
 }
 
 /** Push a point inwards if it is closer than `margin` cm to the skin. */
@@ -305,6 +395,10 @@ export function keepInside(p: Vec3, margin: number): Vec3 {
  * reference limb (0° radial, 90° anterior), `depth` cm beneath the skin.
  */
 export function onLimb(x: number, thetaDeg: number, depth: number): Vec3 {
+  return limbPoint(skinSDF, x, thetaDeg, depth, 2.4 * bulk(x));
+}
+
+function limbPoint(f: Scalar, x: number, thetaDeg: number, depth: number, reach: number): Vec3 {
   const t = (thetaDeg * Math.PI) / 180;
   const c = Math.cos(t);
   const s = Math.sin(t);
@@ -321,31 +415,35 @@ export function onLimb(x: number, thetaDeg: number, depth: number): Vec3 {
   const dy = (c / k - refY) * (secW / ((ref[0] + ref[1]) / 2));
   const dz = (s / k - refZ) * (secD / ((ref[2] + ref[3]) / 2));
   let lo = 0;
-  let hi = 2.4 * bulk(x);
+  let hi = reach;
   for (let i = 0; i < 28; i++) {
     const mid = (lo + hi) / 2;
-    if (skinSDF(x, cy + dy * mid, cz + dz * mid) < 0) lo = mid;
+    if (f(x, cy + dy * mid, cz + dz * mid) < 0) lo = mid;
     else hi = mid;
   }
-  return projectToDepth([x, cy + dy * lo, cz + dz * lo], depth);
+  return toDepth(f, [x, cy + dy * lo, cz + dz * lo], depth);
 }
 
 /** Point beneath the dorsal (posterior) skin of the hand or a finger at (x, y). */
 export function onDorsum(x: number, y: number, depth: number): Vec3 {
+  return dorsumPoint(skinSDF, x, y, depth);
+}
+
+function dorsumPoint(f: Scalar, x: number, y: number, depth: number): Vec3 {
   // Fingers curl toward the palm, so look down through the hand for where it starts and ends.
   const step = 0.08;
   let z = 7;
-  while (z > -5 && skinSDF(x, y, z) > 0) z -= step;
+  while (z > -5 && f(x, y, z) > 0) z -= step;
   if (z <= -5) return [x, y, 0];
-  while (z > -5 && skinSDF(x, y, z) <= 0) z -= step;
+  while (z > -5 && f(x, y, z) <= 0) z -= step;
   let lo = z + step;
   let hi = z;
   for (let i = 0; i < 20; i++) {
     const mid = (lo + hi) / 2;
-    if (skinSDF(x, y, mid) < 0) lo = mid;
+    if (f(x, y, mid) < 0) lo = mid;
     else hi = mid;
   }
-  return projectToDepth([x, y, lo], depth);
+  return toDepth(f, [x, y, lo], depth);
 }
 
 export interface Field {
