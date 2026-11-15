@@ -8,7 +8,9 @@ import { useGLTF } from "@react-three/drei";
  * shipped as one file. Only their shapes are used; materials are set in code so
  * that colour, transparency and blood can change as the procedure goes on.
  *
- * Every long instrument lies along +Y with its working end at the origin.
+ * Every long instrument lies along +Y with its working end at the origin. The
+ * finger is a human index finger (from a MakeHuman body): its pad rests at the
+ * origin of a surface whose normal is +Y, and it runs back along +Z toward the collector.
  */
 const URL = "/models/kit.glb";
 

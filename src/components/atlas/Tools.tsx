@@ -1,7 +1,7 @@
 "use client";
 
 import * as THREE from "three";
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useKit } from "./kit";
 import { live, OFFSET } from "./live";
@@ -36,14 +36,27 @@ function towardViewer(camera: THREE.Camera, at: THREE.Vector3, normal: THREE.Vec
 const FEEL = { vein: "#7fa2ff", artery: "#ff4d57", tendon: "#efe7d6", none: "#9aa7bb" };
 
 /**
- * The palpating fingertip: a gloved index finger that follows the pointer over
- * the arm, pressing into the skin. It springs back over a vein and throbs with
+ * The palpating fingertip: a gloved human index finger that follows the pointer
+ * over the arm, pressing into the skin. Only the end of the finger is shown; it
+ * fades away toward the knuckle rather than ending in a cut. It springs back over a vein and throbs with
  * the pulse over an artery, and what it feels is written beside it.
  */
 export function Fingertip() {
   const palp = useAtlas((s) => s.palp);
   const active = useAtlas((s) => s.mode === "sim" && s.procedure === "venous" && (s.sim.stage === "palpate" || !!s.demo));
   const kit = useKit();
+  // Opacity falls away with distance from the fingertip.
+  const fading = useMemo(() => {
+    const g = kit.Finger.clone();
+    const p = g.getAttribute("position");
+    const rgba = new Float32Array(p.count * 4);
+    for (let i = 0; i < p.count; i++) {
+      const t = Math.min(Math.max((Math.hypot(p.getX(i), p.getY(i), p.getZ(i)) - 3.4) / 3.2, 0), 1);
+      rgba.set([1, 1, 1, 1 - t * t * (3 - 2 * t)], i * 4);
+    }
+    g.setAttribute("color", new THREE.BufferAttribute(rgba, 4));
+    return g;
+  }, [kit]);
   const group = useRef<THREE.Group>(null);
   const finger = useRef<THREE.Group>(null);
   const at = useRef(new THREE.Vector3());
@@ -66,7 +79,7 @@ export function Fingertip() {
     group.current.position.copy(at.current);
     const t = clock.elapsedTime;
     const press = palp.kind === "vein" ? 0.1 + 0.07 * Math.sin(t * 5) : palp.kind === "artery" ? 0.05 + 0.11 * live.pulse : 0.09 + 0.02 * Math.sin(t * 3);
-    finger.current.position.z = 0.42 - press;
+    finger.current.position.z = -0.12 - press;
     showHud(camera, size, at.current, palp.label ?? palp.text, "-420%");
   });
 
@@ -77,11 +90,15 @@ export function Fingertip() {
         <ringGeometry args={[0.62, 0.7, 48]} />
         <meshBasicMaterial color={FEEL[palp.kind]} transparent opacity={0.9} depthTest={false} side={THREE.DoubleSide} />
       </mesh>
-      {/* the finger rises from the skin and leans back toward the collector */}
-      <group ref={finger} rotation={[0.55, 0, 0]}>
-        <mesh geometry={kit.Finger} castShadow>
-          <meshPhysicalMaterial color="#5878d8" roughness={0.42} clearcoat={0.45} clearcoatRoughness={0.3} sheen={0.4} sheenColor="#c9d6ff" />
-        </mesh>
+      {/* the finger comes in low from the collector's side, its pad on the skin */}
+      <group ref={finger}>
+        <group rotation={[0, 0, Math.PI]}>
+          <group rotation={[Math.PI / 2, 0, 0]}>
+            <mesh geometry={fading} renderOrder={9}>
+              <meshPhysicalMaterial color="#4a6fd6" vertexColors transparent depthWrite={false} roughness={0.38} clearcoat={0.55} clearcoatRoughness={0.25} sheen={0.5} sheenColor="#c9d6ff" />
+            </mesh>
+          </group>
+        </group>
       </group>
     </group>
   );
