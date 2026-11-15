@@ -30,7 +30,7 @@ export function ModeTabs() {
             stopDemo();
             set({ mode: id, selected: null, nir: false });
           }}
-          className={`rounded-[10px] px-3 py-1.5 text-[13px] font-medium transition lg:px-4 lg:text-sm ${mode === id ? "bg-accent text-ink-950" : "text-slate-300 hover:bg-white/5"}`}
+          className={`rounded-[10px] px-3 py-2 text-[13px] font-medium transition lg:px-4 lg:py-1.5 lg:text-sm ${mode === id ? "bg-accent text-ink-950" : "text-slate-300 hover:bg-white/5"}`}
         >
           {label}
         </button>

@@ -4,6 +4,9 @@ import type { Reply, Request } from "@/lib/anatomy/build.worker";
 import { unpack, type Body, type Built } from "@/lib/anatomy/geometry";
 import { loadLimb, setGirth } from "@/lib/anatomy/skin";
 import { structuresFor, type Pattern } from "@/lib/anatomy/structures";
+import { useAtlas } from "./store";
+
+const fail = (why: unknown) => useAtlas.getState().set({ failed: why instanceof Error ? why.message : String(why) });
 
 export interface Anatomy {
   pattern: Pattern;
@@ -33,9 +36,16 @@ export function useAnatomy(pattern: Pattern, body: Body): Anatomy | null {
     // The page needs the shape of the limb too, for palpation and the needle.
     const limb = loadLimb();
     let live = true;
+    limb.catch(fail);
+    const onError = (e: ErrorEvent) => fail(e.message || "The model could not be built.");
     const onMessage = async (e: MessageEvent<Reply>) => {
       const m = e.data;
-      await limb;
+      if (m.kind === "failed") return fail(m.message);
+      try {
+        await limb;
+      } catch {
+        return;
+      }
       if (!live) return;
       if (m.kind === "shells") {
         if (m.girth !== base.girth) return;
@@ -61,10 +71,12 @@ export function useAnatomy(pattern: Pattern, body: Body): Anatomy | null {
       setAnatomy({ pattern, body: wanted, skin: base.skin, nails: base.nails, fat: base.fat ?? null, fascia: base.fascia ?? null, built });
     };
     w.addEventListener("message", onMessage);
+    w.addEventListener("error", onError);
     w.postMessage({ id, pattern, body: wanted } satisfies Request);
     return () => {
       live = false;
       w.removeEventListener("message", onMessage);
+      w.removeEventListener("error", onError);
     };
   }, [pattern, girth, veinDepth, calibre]);
 

@@ -935,10 +935,12 @@ function Ground() {
 }
 
 export default function Scene() {
+  // Phones pack more pixels than their graphics chips can comfortably fill, so they render a little less finely.
+  const [phone] = useState(() => typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches);
   return (
     <Canvas
       camera={{ position: [-0.5, 12, 132], fov: 30, near: 0.5, far: 800 }}
-      dpr={[1, 2]}
+      dpr={phone ? [1, 1.5] : [1, 2]}
       shadows
       gl={{ antialias: true, alpha: true }}
       onCreated={({ gl }) => {
@@ -952,7 +954,7 @@ export default function Scene() {
         intensity={1.9}
         color="#fff6ee"
         castShadow
-        shadow-mapSize={[2048, 2048]}
+        shadow-mapSize={phone ? [1024, 1024] : [2048, 2048]}
         shadow-bias={-0.0004}
         shadow-normalBias={0.06}
         shadow-camera-left={-42}

@@ -23,6 +23,7 @@ export default function AtlasPage() {
   const nir = useAtlas((s) => s.nir);
   const ready = useAtlas((s) => s.built.length > 0);
   const demo = useAtlas((s) => !!s.demo);
+  const failed = useAtlas((s) => s.failed);
   const selected = useAtlas((s) => s.selected);
   const [tab, setTab] = useState<"structures" | "display">("structures");
   // Tapping a structure on the model brings its description forward.
@@ -33,6 +34,15 @@ export default function AtlasPage() {
   useEffect(() => {
     const m = new URLSearchParams(window.location.search).get("mode");
     if (m === "sim" || m === "explore") useAtlas.getState().set({ mode: m as Mode });
+  }, []);
+
+  // The model needs WebGL 2. Say so if the browser has none, rather than leaving a spinner turning.
+  useEffect(() => {
+    try {
+      if (!document.createElement("canvas").getContext("webgl2")) useAtlas.getState().set({ failed: "This browser cannot draw 3D graphics (WebGL 2 is unavailable)." });
+    } catch {
+      useAtlas.getState().set({ failed: "This browser cannot draw 3D graphics." });
+    }
   }, []);
 
   // /atlas?demo plays the demonstration as soon as the arm is built, so a link can show it without a tap.
@@ -50,11 +60,27 @@ export default function AtlasPage() {
         </div>
         <Labels />
 
-        {!ready && (
+        {!ready && !failed && (
           <div className="absolute inset-0 grid place-items-center bg-ink-950">
             <div className="text-center">
               <div className="mx-auto h-10 w-10 animate-spin rounded-full border-2 border-white/15 border-t-accent" />
               <p className="mt-4 text-sm text-slate-400">Building anatomy…</p>
+            </div>
+          </div>
+        )}
+        {failed && !ready && (
+          <div className="absolute inset-0 z-20 grid place-items-center bg-ink-950 p-6" role="alert">
+            <div className="max-w-sm text-center">
+              <p className="text-base font-semibold text-white">The 3D model could not be shown on this device</p>
+              <p className="mt-2 text-sm leading-relaxed text-slate-400">{failed.replace(/.?$/, ".")} Try an up-to-date browser, or close other tabs and reload.</p>
+              <div className="mt-4 flex justify-center gap-2">
+                <button className="btn" onClick={() => window.location.reload()}>
+                  Reload
+                </button>
+                <a className="btn btn-ghost" href="/reference">
+                  Open the reference
+                </a>
+              </div>
             </div>
           </div>
         )}
