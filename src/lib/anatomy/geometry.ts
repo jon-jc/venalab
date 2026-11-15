@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { DIGITS, FINGER_FLATTEN, girth, keepInside, onDorsum, onLimb, projectToDepth, skinField, skinSDF, surfaceNets, type Field, type Vec3 } from "./skin";
+import { DIGITS, fit, girth, keepInside, onDorsum, onLimb, projectToDepth, skinField, skinSDF, surfaceNets, type Field, type Vec3 } from "./skin";
 import { LAYER_COLOR, structuresFor, TENDON, type Part, type Pattern, type Pt, type Radius, type StructureDef } from "./structures";
 
 /** Centre-line of a tubular structure with its radius at every sample. */
@@ -54,10 +54,14 @@ function resolve(pts: Pt[], centreMargin: (x: number) => number, perSpan = 18, d
       ctrl.push(new THREE.Vector3(...onLimb(pt.s[0], pt.s[1], pt.s[2])));
       depth.push(pt.s[2] + deeper);
     } else if ("d" in pt) {
-      ctrl.push(new THREE.Vector3(...onDorsum(pt.d[0], pt.d[1], pt.d[2])));
+      const q = fit([pt.d[0], pt.d[1], 0]);
+      ctrl.push(new THREE.Vector3(...onDorsum(q[0], q[1], pt.d[2])));
       depth.push(pt.d[2] + deeper);
+    } else if ("b" in pt) {
+      ctrl.push(new THREE.Vector3(...onDorsum(pt.b[0], pt.b[1], pt.b[2])));
+      depth.push(pt.b[2] + deeper);
     } else {
-      ctrl.push(new THREE.Vector3(...pt.p));
+      ctrl.push(new THREE.Vector3(...("p" in pt ? fit(pt.p) : pt.a)));
       depth.push(null);
     }
   }
@@ -192,7 +196,7 @@ function buildPart(part: Part, def: StructureDef, body: Body): { g: THREE.Buffer
     const g = new THREE.SphereGeometry(1, 40, 28);
     g.deleteAttribute("uv");
     g.scale(part.r[0], part.r[1], part.r[2]);
-    g.translate(part.c[0], part.c[1], part.c[2]);
+    g.translate(...fit(part.c));
     constrain(g, margin);
     if (def.layer === "muscles") {
       paint(g, def, null);
@@ -300,7 +304,7 @@ function buildBone(def: StructureDef): { geometry: THREE.BufferGeometry; paths: 
   const fuse = def.parts.some((p) => p.kind === "blob") && def.parts.some((p) => p.kind === "tube");
   for (const part of def.parts) {
     const prims: Prim[] = [];
-    if (part.kind === "blob") prims.push({ c: part.c, r: part.r });
+    if (part.kind === "blob") prims.push({ c: fit(part.c), r: part.r });
     else {
       const pts = resolve(part.pts, margin, 10);
       const radii = pts.map((_, i) => radiusAt(part.r, i / (pts.length - 1)));
@@ -353,7 +357,7 @@ export function buildStructures(pattern: Pattern, body: Body = AVERAGE): Built[]
       anchor = p[Math.floor(p.length * 0.5)];
     } else {
       const part = def.parts[0];
-      anchor = part.kind === "blob" ? part.c : [0, 0, 0];
+      anchor = part.kind === "blob" ? fit(part.c) : [0, 0, 0];
     }
     return { def, geometry, paths, anchor };
   });
@@ -371,14 +375,13 @@ export function buildNails(): THREE.BufferGeometry {
     const t = Math.min(Math.max((v - a) / (b - a), 0), 1);
     return t * t * (3 - 2 * t);
   };
-  const parts = DIGITS.map((d, i) => {
+  const parts = DIGITS.map((d) => {
     const a = new THREE.Vector3(...d.joints[2]);
     const b = new THREE.Vector3(...d.joints[3]);
     const axis = b.clone().sub(a);
     const len = axis.length();
     axis.normalize();
-    // The thumb is turned: its nail faces outward as much as backward.
-    const back = (i === 0 ? new THREE.Vector3(0, 0.72, -0.7) : new THREE.Vector3(0, 0, -1)).clone();
+    const back = new THREE.Vector3(...d.back);
     back.addScaledVector(axis, -back.dot(axis)).normalize();
     const side = new THREE.Vector3().crossVectors(back, axis);
     const tip = d.radii[3];

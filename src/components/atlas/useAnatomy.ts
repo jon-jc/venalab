@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { useEffect, useState } from "react";
 import type { Reply, Request } from "@/lib/anatomy/build.worker";
 import { unpack, type Body, type Built } from "@/lib/anatomy/geometry";
-import { setGirth } from "@/lib/anatomy/skin";
+import { loadLimb, setGirth } from "@/lib/anatomy/skin";
 import { structuresFor, type Pattern } from "@/lib/anatomy/structures";
 
 export interface Anatomy {
@@ -30,8 +30,13 @@ export function useAnatomy(pattern: Pattern, body: Body): Anatomy | null {
     const w = worker;
     const id = ++requests;
     const wanted: Body = { girth, veinDepth, calibre };
-    const onMessage = (e: MessageEvent<Reply>) => {
+    // The page needs the shape of the limb too, for palpation and the needle.
+    const limb = loadLimb();
+    let live = true;
+    const onMessage = async (e: MessageEvent<Reply>) => {
       const m = e.data;
+      await limb;
+      if (!live) return;
       if (m.kind === "shells") {
         if (m.girth !== base.girth) return;
         base.fat = unpack(m.fat);
@@ -57,7 +62,10 @@ export function useAnatomy(pattern: Pattern, body: Body): Anatomy | null {
     };
     w.addEventListener("message", onMessage);
     w.postMessage({ id, pattern, body: wanted } satisfies Request);
-    return () => w.removeEventListener("message", onMessage);
+    return () => {
+      live = false;
+      w.removeEventListener("message", onMessage);
+    };
   }, [pattern, girth, veinDepth, calibre]);
 
   return anatomy;

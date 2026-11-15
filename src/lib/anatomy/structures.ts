@@ -4,11 +4,25 @@ export type LayerId = "skin" | "fat" | "veins" | "fascia" | "nerves" | "arteries
 export type Pattern = "H" | "M";
 export type Rating = "first" | "second" | "third" | "alternate" | "avoid" | "hazard" | "landmark";
 
-/** Control point: on the limb surface (x, θ°, depth), under the dorsal hand skin (x, y, depth), or absolute. */
-export type Pt = { s: Vec3 } | { d: Vec3 } | { p: Vec3 };
+/**
+ * Control point. Laid out on the reference limb and carried onto the modelled
+ * one: on the limb surface (x, θ°, depth), under the dorsal hand skin
+ * (x, y, depth), or a position inside the limb. Points that follow the digits
+ * are given on the modelled hand itself: a position, or under its dorsal skin.
+ */
+export type Pt = { s: Vec3 } | { d: Vec3 } | { p: Vec3 } | { a: Vec3 } | { b: Vec3 };
 const S = (x: number, theta: number, depth = 0.3): Pt => ({ s: [x, theta, depth] });
 const D = (x: number, y: number, depth = 0.24): Pt => ({ d: [x, y, depth] });
 const P = (x: number, y: number, z: number): Pt => ({ p: [x, y, z] });
+const A = (x: number, y: number, z: number): Pt => ({ a: [x, y, z] });
+const B = (x: number, y: number, depth = 0.24): Pt => ({ b: [x, y, depth] });
+
+/** A joint of a digit, moved toward the back of the finger by `back` cm. */
+const joint = (digit: number, k: number, back = 0): Pt => {
+  const d = DIGITS[digit];
+  const j = d.joints[k];
+  return A(j[0] + d.back[0] * back, j[1] + d.back[1] * back, j[2] + d.back[2] * back);
+};
 
 /** Radius along a path: constant, or [t, r] keys with t in 0..1. */
 export type Radius = number | [number, number][];
@@ -63,18 +77,18 @@ const BASILIC_FOREARM: Pt[] = [D(29.8, -3.0), S(27, 222), S(22, 212), S(15, 195)
 const BASILIC_ARM: Pt[] = [S(-3, 135), S(-6, 138, 0.5), S(-9, 142, 1.0), S(-13, 148, 1.6), S(-21.4, 150, 1.9)];
 
 /** Dorsal points over the 2nd, 3rd and 4th web spaces, where digital veins unite. */
-const WEBS: Vec3[] = [
-  [36.0, 2.05, 0.22],
-  [36.2, 0.0, 0.22],
-  [35.5, -1.95, 0.22],
-];
+const WEBS: Pt[] = [1, 2, 3].map((f) => {
+  const a = DIGITS[f].joints[0];
+  const b = DIGITS[f + 1].joints[0];
+  return B((a[0] + b[0]) / 2 + 0.6, (a[1] + b[1]) / 2, 0.22);
+});
 
 /** Dorsal digital vein along one side of a finger (side +1 radial, −1 ulnar), ending at `end`. */
 function digitalVein(digit: number, side: 1 | -1, end: Pt[]): Part {
   const j = DIGITS[digit].joints;
   const r = DIGITS[digit].radii;
   const at = (k: number, u: number) =>
-    D(j[k][0] + (j[k + 1][0] - j[k][0]) * u, j[k][1] + (j[k + 1][1] - j[k][1]) * u + side * r[k] * 0.55, 0.2);
+    B(j[k][0] + (j[k + 1][0] - j[k][0]) * u, j[k][1] + (j[k + 1][1] - j[k][1]) * u + side * r[k] * 0.55, 0.2);
   return tube([at(2, 0.3), at(1, 0.5), at(0, 0.95), at(0, 0.5), ...end], 0.05);
 }
 
@@ -204,9 +218,9 @@ const VEINS: StructureDef[] = [
     rating: "alternate",
     label: true,
     parts: [
-      tube([D(...WEBS[0]), D(33.8, 1.95), D(31.2, 2.0)], [[0, 0.085], [1, 0.11]]),
-      tube([D(...WEBS[1]), D(34.0, 0.15), D(32.0, 0.3)], [[0, 0.085], [1, 0.11]]),
-      tube([D(...WEBS[2]), D(33.4, -1.8), D(31.4, -1.5)], [[0, 0.085], [1, 0.11]]),
+      tube([WEBS[0], D(33.8, 1.95), D(31.2, 2.0)], [[0, 0.085], [1, 0.11]]),
+      tube([WEBS[1], D(34.0, 0.15), D(32.0, 0.3)], [[0, 0.085], [1, 0.11]]),
+      tube([WEBS[2], D(33.4, -1.8), D(31.4, -1.5)], [[0, 0.085], [1, 0.11]]),
     ],
     summary:
       "Three veins running in the intervals between the metacarpals on the back of the hand, formed by the union of dorsal digital veins.",
@@ -223,12 +237,12 @@ const VEINS: StructureDef[] = [
       digitalVein(0, 1, [D(30.4, 3.9), D(29.6, 3.3)]),
       digitalVein(0, -1, [D(30.0, 3.3), D(29.6, 3.3)]),
       digitalVein(1, 1, [D(34.3, 3.8), D(31.9, 3.65), D(29.6, 3.3)]),
-      digitalVein(1, -1, [D(...WEBS[0])]),
-      digitalVein(2, 1, [D(...WEBS[0])]),
-      digitalVein(2, -1, [D(...WEBS[1])]),
-      digitalVein(3, 1, [D(...WEBS[1])]),
-      digitalVein(3, -1, [D(...WEBS[2])]),
-      digitalVein(4, 1, [D(...WEBS[2])]),
+      digitalVein(1, -1, [WEBS[0]]),
+      digitalVein(2, 1, [WEBS[0]]),
+      digitalVein(2, -1, [WEBS[1]]),
+      digitalVein(3, 1, [WEBS[1]]),
+      digitalVein(3, -1, [WEBS[2]]),
+      digitalVein(4, 1, [WEBS[2]]),
       digitalVein(4, -1, [D(33.3, -3.6), D(31.3, -3.45), D(29.8, -3.0)]),
     ],
     summary:
@@ -433,7 +447,7 @@ const MUSCLES: StructureDef[] = [
     color: TENDON,
     rating: "landmark",
     parts: DIGITS.slice(1).map((d) =>
-      tube([P(26.5, 0.2 + d.joints[0][1] * 0.12, -1.1), P(30.5, d.joints[0][1] * 0.62, -0.75), P(d.joints[0][0], d.joints[0][1], -0.5), P(d.joints[1][0], d.joints[1][1], d.joints[1][2] - 0.45), P(d.joints[2][0], d.joints[2][1], d.joints[2][2] - 0.4)], 0.13, 0.45),
+      tube([P(26.5, 0.2 + d.joints[0][1] * 0.12, -1.1), P(30.5, d.joints[0][1] * 0.62, -0.75), B(d.joints[0][0], d.joints[0][1], 0.3), B(d.joints[1][0], d.joints[1][1], 0.24), B(d.joints[2][0], d.joints[2][1], 0.2)], 0.13, 0.45),
     ),
     summary: "Four tendons of extensor digitorum fan out from the wrist across the back of the hand to the fingers.",
     clinical:
@@ -446,8 +460,8 @@ const MUSCLES: StructureDef[] = [
     color: TENDON,
     rating: "landmark",
     parts: [
-      tube([P(22, 0.4, -1.4), P(27.2, 1.7, -1.0), P(30.4, 4.0, 0.9), P(34.2, 6.4, 2.1)], 0.13, 0.5),
-      tube([P(20, 2.3, -1.0), P(26.4, 3.0, -0.1), P(28.8, 3.5, 1.0), P(31.4, 4.9, 1.7)], 0.15, 0.5),
+      tube([P(22, 0.4, -1.4), P(26.2, 1.4, -1.2), joint(0, 0, 0.75), joint(0, 1, 0.6), joint(0, 2, 0.5)], 0.13, 0.5),
+      tube([P(20, 2.3, -1.0), P(25.6, 2.6, -0.3), A(DIGITS[0].joints[0][0], DIGITS[0].joints[0][1] + 0.85, DIGITS[0].joints[0][2] - 0.1), A(DIGITS[0].joints[1][0] - 0.3, DIGITS[0].joints[1][1] + 0.55, DIGITS[0].joints[1][2] - 0.1)], 0.15, 0.5),
     ],
     summary:
       "Extensor pollicis longus (ulnar border) and abductor pollicis longus with extensor pollicis brevis (radial border) outline the hollow at the base of the thumb.",
@@ -469,7 +483,11 @@ const MUSCLES: StructureDef[] = [
 // ───────────────────────────── Bones ─────────────────────────────
 
 const BONE = "#ded3b6";
-const dorsalShift = (j: Vec3): Pt => P(j[0], j[1], j[2] - 0.12);
+/** Where the bone lies at a joint: just beneath the knuckle, and a little behind the middle of a finger. */
+const boneAt = (digit: number, k: number): Pt => {
+  if (digit > 0 && k === 0) return B(DIGITS[digit].joints[0][0], DIGITS[digit].joints[0][1], 0.72);
+  return joint(digit, k, digit === 0 && k < 2 ? 0.3 : 0.12);
+};
 
 const CARPAL_ROW: Vec3[] = [
   [28.5, 2.3, 0.2],
@@ -547,7 +565,7 @@ const BONES: StructureDef[] = [
     color: BONE,
     rating: "landmark",
     parts: DIGITS.map((d, i) =>
-      tube([P(...CARPAL_ROW[i]), dorsalShift(d.joints[i === 0 ? 1 : 0])], [[0, 0.5], [0.2, 0.33], [0.8, 0.33], [1, 0.5]]),
+      tube([i === 0 ? boneAt(0, 0) : P(...CARPAL_ROW[i]), boneAt(i, i === 0 ? 1 : 0)], [[0, 0.5], [0.2, 0.33], [0.8, 0.33], [1, 0.5]]),
     ),
     summary: "Five long bones of the palm; their heads form the knuckles.",
     clinical: "The dorsal metacarpal veins run in the soft intervals between these bones — puncture over the interval, not over the bone.",
@@ -558,10 +576,10 @@ const BONES: StructureDef[] = [
     layer: "bones",
     color: BONE,
     parts: DIGITS.flatMap((d, i) =>
-      d.joints.slice(i === 0 ? 1 : 0, -1).map((a, j) => {
-        const b = d.joints[(i === 0 ? 1 : 0) + j + 1];
+      d.joints.slice(i === 0 ? 1 : 0, -1).map((_, j) => {
+        const k = (i === 0 ? 1 : 0) + j;
         const r = 0.34 - j * 0.05;
-        return tube([dorsalShift(a), dorsalShift(b)], [[0, r + 0.1], [0.25, r], [0.8, r], [1, r + 0.06]]);
+        return tube([boneAt(i, k), boneAt(i, k + 1)], [[0, r + 0.1], [0.25, r], [0.8, r], [1, r + 0.06]]);
       }),
     ),
     summary: "Bones of the fingers and thumb.",
@@ -573,11 +591,19 @@ const BONES: StructureDef[] = [
 
 /** A point beside a digit: `u` along phalanx k, offset sideways and toward the palm in finger radii. */
 const beside = (digit: number, k: number, u: number, side: number, palmar: number): Pt => {
-  const j = DIGITS[digit].joints;
-  const r = DIGITS[digit].radii[k];
-  const a = j[k];
-  const b = j[Math.min(k + 1, 3)];
-  return P(a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u + side * r, a[2] + (b[2] - a[2]) * u + palmar * r);
+  const d = DIGITS[digit];
+  const r = d.radii[k];
+  const a = d.joints[k];
+  const b = d.joints[Math.min(k + 1, 3)];
+  // Across the finger: at right angles to its length and to the way its nail faces.
+  const ax: Vec3 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+  const n = d.back;
+  const sx = ax[1] * n[2] - ax[2] * n[1];
+  const sy = ax[2] * n[0] - ax[0] * n[2];
+  const sz = ax[0] * n[1] - ax[1] * n[0];
+  const l = (Math.hypot(sx, sy, sz) || 1) / (side * r);
+  const q = -palmar * r;
+  return A(a[0] + ax[0] * u + sx / l + n[0] * q, a[1] + ax[1] * u + sy / l + n[1] * q, a[2] + ax[2] * u + sz / l + n[2] * q);
 };
 const FINGERS = [1, 2, 3, 4];
 const SIDES = [1, -1];

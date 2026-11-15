@@ -53,8 +53,8 @@ export function locate(p: Vec3): FingerSite {
     const gap = Math.hypot(radial[0], radial[1], radial[2]) - d.radii[3];
     if (gap >= best.gap) return;
     const axis = unit(ab);
-    // The pad faces the palm; the thumb is turned, so its pad faces across the hand.
-    const facing: Vec3 = i === 0 ? [0, -0.72, 0.7] : [0, 0, 1];
+    // The pad is the side of the fingertip opposite the nail.
+    const facing: Vec3 = [-d.back[0], -d.back[1], -d.back[2]];
     const k = dot(facing, axis);
     const pad = unit([facing[0] - axis[0] * k, facing[1] - axis[1] * k, facing[2] - axis[2] * k]);
     const around = (Math.acos(Math.min(1, Math.max(-1, dot(unit(radial), pad)))) * 180) / Math.PI;
