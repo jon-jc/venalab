@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { ControlPanel, DemoCaption, InfoPanel, ModeTabs } from "@/components/atlas/Panels";
 import { PracticePanel } from "@/components/atlas/PracticePanel";
+import { playDemo } from "@/components/atlas/demo";
 import { Labels } from "@/components/atlas/Labels";
 import { useAtlas, type Mode } from "@/components/atlas/store";
 
@@ -18,6 +19,7 @@ export default function AtlasPage() {
   const mode = useAtlas((s) => s.mode);
   const nir = useAtlas((s) => s.nir);
   const ready = useAtlas((s) => s.built.length > 0);
+  const demo = useAtlas((s) => !!s.demo);
   const [controls, setControls] = useState(false);
 
   useEffect(() => {
@@ -25,9 +27,16 @@ export default function AtlasPage() {
     if (m === "sim" || m === "explore") useAtlas.getState().set({ mode: m as Mode });
   }, []);
 
+  // /atlas?demo plays the demonstration as soon as the arm is built, so a link can show it without a tap.
+  useEffect(() => {
+    if (!ready || !new URLSearchParams(window.location.search).has("demo")) return;
+    const id = setTimeout(playDemo, 600);
+    return () => clearTimeout(id);
+  }, [ready]);
+
   return (
     <div className="relative flex h-[calc(100dvh-80px)] flex-col overflow-hidden lg:block" style={{ background: nir ? "#020806" : undefined }}>
-      <div className="relative h-[46%] shrink-0 lg:absolute lg:inset-0 lg:h-auto">
+      <div className={`relative shrink-0 lg:absolute lg:inset-0 lg:h-auto ${demo ? "h-[68%]" : "h-[46%]"}`}>
         <div className="absolute inset-0">
           <Scene />
         </div>
@@ -56,7 +65,7 @@ export default function AtlasPage() {
         </div>
       </div>
 
-      <div className="z-10 min-h-0 flex-1 overflow-y-auto border-t border-white/10 p-2 lg:absolute lg:bottom-3 lg:right-3 lg:top-3 lg:flex lg:items-start lg:overflow-visible lg:border-0 lg:p-0">
+      <div className={`z-10 min-h-0 flex-1 overflow-y-auto border-t border-white/10 p-2 ${demo ? "hidden lg:flex" : ""} lg:absolute lg:bottom-3 lg:right-3 lg:top-3 lg:flex lg:items-start lg:overflow-visible lg:border-0 lg:p-0`}>
         {mode === "explore" && <InfoPanel />}
         {mode === "sim" && <PracticePanel />}
       </div>
