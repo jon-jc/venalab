@@ -30,10 +30,10 @@ export const TONES = [
 ];
 
 export const VIEWS: Record<string, { label: string; target: Vec3; position: Vec3 }> = {
-  full: { label: "Whole limb", target: [14, 1, 0], position: [15, 10, 128] },
+  full: { label: "Whole limb", target: [12.5, 1, 0.5], position: [13.5, 12, 132] },
   fossa: { label: "Antecubital fossa", target: [0.5, 0, 2], position: [2, -1, 40] },
   forearm: { label: "Anterior forearm", target: [13, 0, 1], position: [13, 0, 46] },
-  dorsum: { label: "Dorsal hand", target: [33, 0.5, -1], position: [34, 3, -36] },
+  dorsum: { label: "Dorsal hand", target: [34, 0.8, 0], position: [36, 6, -38] },
   wrist: { label: "Radial wrist", target: [25, 2, 0], position: [25, 26, 16] },
   medial: { label: "Medial elbow", target: [-1, -2, 1], position: [-1, -30, 24] },
   needle: { label: "Needle close-up", target: [0.5, 0, 3], position: [9, -9, 17] },

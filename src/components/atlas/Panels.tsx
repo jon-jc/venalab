@@ -94,7 +94,7 @@ export function ControlPanel() {
               <Toggle on={s.clip !== null} onChange={(v) => s.set({ clip: v ? 4 : null })}>
                 Cut
               </Toggle>
-              <input type="range" min={-17} max={44} step={0.25} disabled={s.clip === null} value={s.clip ?? 4} onChange={(e) => s.set({ clip: +e.target.value })} />
+              <input type="range" min={-20} max={45} step={0.25} disabled={s.clip === null} value={s.clip ?? 4} onChange={(e) => s.set({ clip: +e.target.value })} />
             </div>
             <p className="mt-1.5 text-[11px] text-slate-500">Removes everything distal to the cut so you can look up the limb.</p>
           </Section>
