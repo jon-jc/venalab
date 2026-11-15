@@ -98,16 +98,28 @@ for (const d of DIGITS.slice(1)) CREASES.push({ at: new THREE.Vector4(...d.knuck
 CREASES.push({ at: new THREE.Vector4(...fit([26.3, 0, 0.8]), 3.7), dir: new THREE.Vector4(1, 0, 0, 1) }); // wrist
 CREASES.push({ at: new THREE.Vector4(...fit([0.2, 0.2, 3.2]), 3.1), dir: new THREE.Vector4(1, 0, 0, 1) }); // elbow
 
-/** The three main palmar creases as line segments in the plane of the palm: (x, y) → (x, y). */
-const PALM_LINES = [
-  [35.0, -3.9, 34.55, -1.0], [34.55, -1.0, 35.35, 1.7], // distal transverse crease
-  [34.2, 3.6, 33.0, 0.5], [33.0, 0.5, 31.6, -2.8], // proximal transverse crease
-  [34.0, 3.5, 31.2, 1.6], [31.2, 1.6, 28.0, 1.0], // thenar crease
-].map((l) => {
-  const a = fit([l[0], l[1], 0]);
-  const b = fit([l[2], l[3], 0]);
-  return new THREE.Vector4(a[0], a[1], b[0], b[1]);
-});
+/**
+ * The three main palmar creases, each a curve through points in the plane of
+ * the palm: [x, y, how deeply it is marked there]. They are deepest in the
+ * middle of the palm and fade out toward its edges.
+ */
+const PALM_CREASES: [number, number, number][][] = [
+  // distal transverse crease: from the ulnar border, curving up between the index and middle fingers
+  [[33.2, -3.9, 0.45], [33.4, -2.5, 0.9], [33.8, -0.9, 1], [34.5, 0.7, 0.85], [35.2, 1.8, 0.3]],
+  // proximal transverse crease: from the radial border across to the hypothenar eminence
+  [[34.0, 3.7, 0.5], [33.3, 2.3, 0.95], [32.6, 0.7, 1], [32.0, -1.1, 0.7], [31.6, -2.5, 0.2]],
+  // thenar crease: around the base of the thumb toward the wrist
+  [[34.0, 3.7, 0.5], [32.8, 2.5, 0.95], [31.2, 1.6, 1], [29.5, 1.05, 0.75], [27.8, 0.9, 0.25]],
+];
+const PALM_LINES: THREE.Vector4[] = [];
+const PALM_ENDS: THREE.Vector2[] = [];
+for (const crease of PALM_CREASES)
+  for (let i = 0; i < crease.length - 1; i++) {
+    const a = fit([crease[i][0], crease[i][1], 0]);
+    const b = fit([crease[i + 1][0], crease[i + 1][1], 0]);
+    PALM_LINES.push(new THREE.Vector4(a[0], a[1], b[0], b[1]));
+    PALM_ENDS.push(new THREE.Vector2(crease[i][2], crease[i + 1][2]));
+  }
 
 /** Where blood shows through thin skin and the surface looks pinker: centre and radius. */
 const BLUSH = [
@@ -124,6 +136,7 @@ export const skinUniforms = {
   uCrease: { value: CREASES.map((c) => c.at) },
   uCreaseDir: { value: CREASES.map((c) => c.dir) },
   uPalmLine: { value: PALM_LINES },
+  uPalmEnds: { value: PALM_ENDS },
   uBlush: { value: BLUSH },
   /** Colour of palmar skin, which is paler and pinker than the rest. */
   uPalm: { value: new THREE.Color("#f3c4b4") },
@@ -147,7 +160,7 @@ export const skinMaterial = tissue({
     vec3 slope = uBulge * aVeinGrad + 2.0 * pressed * pressOffset / pressR2;
     objectNormal = normalize(objectNormal - (slope - dot(slope, objectNormal) * objectNormal));`,
   vertexPosition: "vAO = aAO;\ntransformed += normalize(normal) * (uBulge * aVein - pressed);",
-  fragmentHead: `uniform vec4 uCrease[${CREASES.length}];\nuniform vec4 uCreaseDir[${CREASES.length}];\nuniform vec4 uPalmLine[${PALM_LINES.length}];\nuniform vec4 uBlush[${BLUSH.length}];\nuniform vec3 uPalm;\nuniform vec3 uRim;\nuniform vec3 uScatter;\nuniform vec3 uKey;\nvarying float vAO;`,
+  fragmentHead: `uniform vec4 uCrease[${CREASES.length}];\nuniform vec4 uCreaseDir[${CREASES.length}];\nuniform vec4 uPalmLine[${PALM_LINES.length}];\nuniform vec2 uPalmEnds[${PALM_LINES.length}];\nuniform vec4 uBlush[${BLUSH.length}];\nuniform vec3 uPalm;\nuniform vec3 uRim;\nuniform vec3 uScatter;\nuniform vec3 uKey;\nvarying float vAO;`,
   surface: /* glsl */ `
     vec3 sp = vObjPos;
     vec3 sn = normalize(vObjNormal);
@@ -175,13 +188,16 @@ export const skinMaterial = tissue({
     }
     float palmar = smoothstep(26.8, 28.5, sp.x) * smoothstep(0.2, 0.6, sn.z);
     float palmLine = 0.0;
+    // No crease is ruled: each wanders a little as it crosses the palm.
+    vec2 pp = sp.xy + 0.07 * (vec2(vnoise(sp * 1.5), vnoise(sp * 1.5 + 9.0)) - 0.5);
     for (int i = 0; i < ${PALM_LINES.length}; i++) {
-      vec2 pa = sp.xy - uPalmLine[i].xy;
+      vec2 pa = pp - uPalmLine[i].xy;
       vec2 ba = uPalmLine[i].zw - uPalmLine[i].xy;
-      vec2 off = pa - ba * clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
-      palmLine = max(palmLine, exp(-dot(off, off) / 0.006));
+      float along = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+      vec2 off = pa - ba * along;
+      palmLine = max(palmLine, mix(uPalmEnds[i].x, uPalmEnds[i].y, along) * exp(-dot(off, off) / 0.0045));
     }
-    crease = max(crease, 0.85 * palmLine * palmar);
+    crease = max(crease, 0.6 * palmLine * palmar);
     float blush = 0.0;
     for (int i = 0; i < ${BLUSH.length}; i++) {
       vec3 q = sp - uBlush[i].xyz;
