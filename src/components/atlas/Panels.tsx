@@ -1,7 +1,7 @@
 "use client";
 
 import { LAYER_COLOR, LAYER_NAME, LAYER_ORDER, RATING_COLOR, RATING_LABEL, type StructureDef } from "@/lib/anatomy/structures";
-import { DEMO_STEPS, playDemo, stopDemo } from "./demo";
+import { playDemo, playTour, stopDemo } from "./demo";
 import { PRESETS, TONES, useAtlas, VIEWS, type Mode } from "./store";
 
 const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
@@ -158,9 +158,10 @@ export function InfoPanel() {
   const selected = useAtlas((s) => s.selected);
   const set = useAtlas((s) => s.set);
   const goto = useAtlas((s) => s.goto);
+  const demo = useAtlas((s) => s.demo);
   const b = built.find((x) => x.def.id === selected);
 
-  if (b) {
+  if (b && !demo) {
     const d = b.def;
     return (
       <div className="panel thin-scroll max-h-full w-[340px] overflow-y-auto p-4">
@@ -210,6 +211,9 @@ export function InfoPanel() {
   };
   return (
     <div className="panel thin-scroll max-h-full w-[340px] overflow-y-auto p-4">
+      <button className="btn btn-ghost mb-4 w-full" onClick={() => (demo ? stopDemo() : playTour())}>
+        {demo ? "■  Stop tour" : "▶  Take the guided anatomy tour"}
+      </button>
       <h2 className="text-base font-semibold">Site selection</h2>
       <p className="mt-1 text-xs leading-relaxed text-slate-400">Click any structure on the model, or pick one below. Veins are listed in the order you should consider them.</p>
       <ul className="mt-3 space-y-1.5">
@@ -356,11 +360,11 @@ export function DemoCaption() {
     <div className="pointer-events-none absolute inset-x-0 bottom-10 z-20 flex justify-center px-4">
       <div className="panel max-w-2xl px-6 py-4 text-center">
         <div className="mb-2 flex justify-center gap-1.5">
-          {Array.from({ length: DEMO_STEPS }, (_, i) => (
+          {Array.from({ length: demo.total }, (_, i) => (
             <span key={i} className={`h-1 w-7 rounded-full ${i <= demo.step ? "bg-accent" : "bg-white/15"}`} />
           ))}
         </div>
-        <p className="text-[11px] font-semibold uppercase tracking-widest text-accent">Step {demo.step + 1} of {DEMO_STEPS}</p>
+        <p className="text-[11px] font-semibold uppercase tracking-widest text-accent">Step {demo.step + 1} of {demo.total}</p>
         <p className="mt-1 text-base leading-snug text-white">{demo.caption}</p>
       </div>
     </div>

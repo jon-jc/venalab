@@ -1,15 +1,15 @@
 "use client";
 
 import * as THREE from "three";
-import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { ContactShadows, Environment, Lightformer, OrbitControls } from "@react-three/drei";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
-import { buildShell, buildStructures, veinShade, type Built } from "@/lib/anatomy/geometry";
+import { buildShell, buildStructures, surfaceGradient, veinShade, type Built } from "@/lib/anatomy/geometry";
 import { DILATION, needleDir, palpate } from "@/lib/anatomy/sim";
 import { onLimb, skinNormal, type Vec3 } from "@/lib/anatomy/skin";
-import { LAYER_COLOR, type LayerId } from "@/lib/anatomy/structures";
-import { effectiveLayers, labelEls, TONES, useAtlas, VIEWS } from "./store";
+import { LAYER_COLOR, LAYER_ORDER, type LayerId } from "@/lib/anatomy/structures";
+import { effectiveLayers, labelEls, TONES, useAtlas, VIEWS, type Layers } from "./store";
 
 /** The model is shifted so the mid-forearm sits at the world origin. */
 const OFFSET = 14;
@@ -27,6 +27,13 @@ const live = {
   artery: { value: 0 },
   /** Arterial pressure pulse, 0..1, at 72 beats per minute. */
   pulse: 0,
+  /** Height (cm) by which the skin rises over a superficial vein. */
+  bulge: { value: 0.03 },
+  /** Where something is pressing on the skin (xyz, radius in cm) and how deep. */
+  press: { value: new THREE.Vector4(0, 0, 0, 1) },
+  pressDepth: { value: 0 },
+  /** Millimetres of needle beneath the skin right now (negative while it hovers). */
+  needle: -100,
 };
 
 function heartbeat(t: number): number {
@@ -41,6 +48,21 @@ function Physiology() {
     live.vein.value += (target - live.vein.value) * (1 - Math.exp(-Math.min(dt, 0.05) * (tourniquet ? 1.1 : 2.2)));
     live.pulse = heartbeat(clock.elapsedTime);
     live.artery.value = 0.085 * live.pulse;
+    live.bulge.value = 0.03 + 0.42 * live.vein.value;
+
+    // The skin gives under a palpating fingertip, and tents under the needle until it punctures.
+    const s = useAtlas.getState();
+    let want = 0;
+    if (s.mode === "sim" && s.sim.phase === "advancing" && s.sim.entry && live.needle < 3.5) {
+      const e = s.sim.entry;
+      live.press.value.set(e[0], e[1], e[2], 0.55);
+      want = 0.2 * Math.min(Math.max((live.needle + 3) / 5, 0), 1);
+    } else if (s.mode === "sim" && s.sim.phase === "aim" && s.palp?.p) {
+      const p = s.palp.p;
+      live.press.value.set(p[0], p[1], p[2], 0.95);
+      want = s.palp.kind === "vein" ? 0.11 + 0.05 * Math.sin(clock.elapsedTime * 5) : s.palp.kind === "artery" ? 0.07 + 0.08 * live.pulse : 0.1;
+    }
+    live.pressDepth.value += (want - live.pressDepth.value) * (1 - Math.exp(-Math.min(dt, 0.05) * 14));
   });
   return null;
 }
@@ -52,6 +74,55 @@ const swellShader = (uniform: { value: number }) => (shader: { uniforms: Record<
     "attribute float aRadius;\nuniform float uSwell;\n" +
     shader.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\ntransformed += normalize(objectNormal) * aRadius * uSwell;");
 };
+
+/** Raises the skin over veins and dimples it where it is pressed, re-tilting normals so the relief is lit. */
+const skinShader = (shader: { uniforms: Record<string, unknown>; vertexShader: string }) => {
+  shader.uniforms.uBulge = live.bulge;
+  shader.uniforms.uPress = live.press;
+  shader.uniforms.uPressDepth = live.pressDepth;
+  shader.vertexShader =
+    "attribute float aVein;\nattribute vec3 aVeinGrad;\nuniform float uBulge;\nuniform vec4 uPress;\nuniform float uPressDepth;\n" +
+    shader.vertexShader
+      .replace(
+        "#include <beginnormal_vertex>",
+        `#include <beginnormal_vertex>
+        vec3 pressOffset = position - uPress.xyz;
+        float pressR2 = uPress.w * uPress.w;
+        float pressed = uPressDepth * exp(-dot(pressOffset, pressOffset) / pressR2);
+        vec3 slope = uBulge * aVeinGrad + 2.0 * pressed * pressOffset / pressR2;
+        objectNormal = normalize(objectNormal - (slope - dot(slope, objectNormal) * objectNormal));`,
+      )
+      .replace("#include <begin_vertex>", "#include <begin_vertex>\ntransformed += normalize(normal) * (uBulge * aVein - pressed);");
+};
+
+const ZERO: Layers = { skin: 0, fat: 0, veins: 0, fascia: 0, nerves: 0, arteries: 0, muscles: 0, bones: 0 };
+/** Seconds after load at which each layer starts to appear, deepest first. */
+const ASSEMBLE: Layers = { bones: 0.3, muscles: 0.9, arteries: 1.5, nerves: 1.5, veins: 1.9, fascia: 2.3, fat: 2.5, skin: 2.7 };
+
+/** Layers cross-fade toward their targets, so presets peel away instead of snapping. */
+function useAnimatedLayers(target: Layers, assemble: boolean): Layers {
+  const [shown, setShown] = useState<Layers>(ZERO);
+  const cur = useRef<Layers>(ZERO);
+  const born = useRef<number | null>(null);
+  useFrame(({ clock }, dt) => {
+    born.current ??= clock.elapsedTime;
+    const age = clock.elapsedTime - born.current;
+    let next: Layers | null = null;
+    for (const id of LAYER_ORDER) {
+      if (assemble && age < ASSEMBLE[id]) continue;
+      const d = target[id] - cur.current[id];
+      if (d === 0) continue;
+      const step = Math.min(dt, 0.05) * 2.2;
+      next ??= { ...cur.current };
+      next[id] = Math.abs(d) <= step ? target[id] : cur.current[id] + Math.sign(d) * step;
+    }
+    if (next) {
+      cur.current = next;
+      setShown(next);
+    }
+  });
+  return shown;
+}
 
 interface ClipProps {
   clippingPlanes: THREE.Plane[];
@@ -250,6 +321,7 @@ function Needle() {
     const rate = sim.phase === "advancing" ? 11 : sim.phase === "withdraw" ? 55 : 90;
     const step = rate * dt;
     shown.current = Math.abs(goal - shown.current) <= step ? goal : shown.current + Math.sign(goal - shown.current) * step;
+    live.needle = shown.current;
     if (sim.phase === "advancing" && shown.current === goal) s.finish();
     if (sim.phase === "withdraw" && shown.current === goal) s.resetSim();
 
@@ -349,11 +421,18 @@ function Arm() {
   const flow = useAtlas((s) => s.flow);
   const reveal = useAtlas((s) => s.sim.reveal);
   const userLayers = useAtlas((s) => s.layers);
-  const layers = useMemo(() => effectiveLayers({ mode, layers: userLayers, nir, reveal }), [mode, userLayers, nir, reveal]);
+  const target = useMemo(() => effectiveLayers({ mode, layers: userLayers, nir, reveal }), [mode, userLayers, nir, reveal]);
+  const [assemble] = useState(() => useAtlas.getState().mode === "explore");
+  const layers = useAnimatedLayers(target, assemble);
 
   const shells = useMemo(() => ({ skin: buildShell(0), fat: buildShell(0.035), fascia: buildShell(0.6) }), []);
   const built = useMemo(() => buildStructures(pattern), [pattern]);
-  const shade = useMemo(() => veinShade(shells.skin, built), [shells, built]);
+  const shade = useMemo(() => {
+    const s = veinShade(shells.skin, built);
+    shells.skin.setAttribute("aVein", new THREE.BufferAttribute(s, 1));
+    shells.skin.setAttribute("aVeinGrad", new THREE.BufferAttribute(surfaceGradient(shells.skin, s), 3));
+    return s;
+  }, [shells, built]);
 
   useEffect(() => {
     useAtlas.getState().set({ built });
@@ -451,6 +530,8 @@ function Arm() {
             transparent={layers.skin < 1}
             opacity={layers.skin}
             depthWrite={layers.skin >= 1}
+            onBeforeCompile={skinShader}
+            customProgramCacheKey={() => "skin-relief"}
             {...clip}
           />
         </mesh>
