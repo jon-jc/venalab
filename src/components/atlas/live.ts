@@ -18,8 +18,8 @@ export const live = {
   pressDepth: { value: 0 },
   /** Where the alcohol wipe is on the skin, and when the pointer last moved it. */
   wipe: { p: new THREE.Vector3(), n: new THREE.Vector3(0, 0, 1), at: 0 },
-  /** Where the pointer last was on the skin while choosing a fingerstick site. */
-  hover: { p: new THREE.Vector3(), at: 0 },
+  /** Where the pointer last was on the skin while choosing a fingerstick site; `held` while a finger rests there on a touch screen. */
+  hover: { p: new THREE.Vector3(), at: 0, held: false },
   /** Millimetres of needle beneath the skin right now (negative while it hovers). */
   needle: -100,
 };

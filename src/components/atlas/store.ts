@@ -34,14 +34,18 @@ export const TONES = [
   { name: "Deep", color: "#6d4733", vis: 0.14 },
 ];
 
-export const VIEWS: Record<string, { label: string; target: Vec3; position: Vec3 }> = {
-  full: { label: "Whole limb", target: [17, 1, 0.5], position: [18, 12, 146] },
-  fossa: { label: "Antecubital fossa", target: [0.5, 0, 2], position: [2, -1, 40] },
-  forearm: { label: "Anterior forearm", target: [13, 0, 1], position: [13, 0, 46] },
-  dorsum: { label: "Dorsal hand", target: [34, 0.8, 0], position: [36, 6, -38] },
-  fingers: { label: "Fingertips", target: [42.6, 0.2, 2.0], position: [41.8, -0.8, 27] },
-  wrist: { label: "Radial wrist", target: [25, 2, 0], position: [25, 26, 16] },
-  medial: { label: "Medial elbow", target: [-1, -2, 1], position: [-1, -30, 24] },
+/**
+ * The named camera views. `show` is the width and height, in cm, of what the
+ * view is for; on a narrow screen the camera stands wherever that just fits.
+ */
+export const VIEWS: Record<string, { label: string; target: Vec3; position: Vec3; show: [number, number] }> = {
+  full: { label: "Whole limb", target: [17, 1, 0.5], position: [18, 12, 146], show: [72, 22] },
+  fossa: { label: "Antecubital fossa", target: [0.5, 0, 2], position: [2, -1, 40], show: [22, 12] },
+  forearm: { label: "Anterior forearm", target: [13, 0, 1], position: [13, 0, 46], show: [30, 12] },
+  dorsum: { label: "Dorsal hand", target: [34, 0.8, 0], position: [36, 6, -38], show: [24, 17] },
+  fingers: { label: "Fingertips", target: [42.6, 0.2, 2.0], position: [41.8, -0.8, 27], show: [13, 14] },
+  wrist: { label: "Radial wrist", target: [25, 2, 0], position: [25, 26, 16], show: [18, 10] },
+  medial: { label: "Medial elbow", target: [-1, -2, 1], position: [-1, -30, 24], show: [22, 12] },
 };
 
 /** How much help each level gives, and how strictly the procedure is marked. */

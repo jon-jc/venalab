@@ -450,7 +450,11 @@ function Needle() {
     onPointerDown: (e: ThreeEvent<PointerEvent>) => {
       if (!held) return;
       e.stopPropagation();
-      (e.target as Element).setPointerCapture(e.pointerId);
+      try {
+        (e.target as Element).setPointerCapture(e.pointerId);
+      } catch {
+        // The drag still follows the pointer while it stays over the instrument.
+      }
       if (controls) controls.enabled = false;
       const centre = new THREE.Vector3(entry[0] - OFFSET, entry[1], entry[2]);
       const radius = Math.max(e.point.distanceTo(centre), 2);
@@ -470,7 +474,11 @@ function Needle() {
       else aimAt(e.ray, d.radius, d.offset);
     },
     onPointerUp: (e: ThreeEvent<PointerEvent>) => {
-      (e.target as Element).releasePointerCapture(e.pointerId);
+      try {
+        (e.target as Element).releasePointerCapture(e.pointerId);
+      } catch {
+        // Nothing was captured.
+      }
       release();
     },
     onWheel: (e: ThreeEvent<WheelEvent>) => {
@@ -636,6 +644,7 @@ function Arm() {
   const lift = () => {
     if (!finger.current) return;
     finger.current = false;
+    live.hover.held = false;
     if (controls) controls.enabled = true;
   };
   useEffect(() => {
@@ -651,8 +660,10 @@ function Arm() {
     const s = useAtlas.getState();
     if (!touched.current || mode !== "sim" || s.demo) return;
     const wiping = s.procedure === "venous" ? s.sim.stage === "cleanse" : s.cap.wiping;
-    if (!wiping && !(s.procedure === "venous" && s.sim.stage === "palpate")) return;
+    const choosing = s.procedure === "capillary" && s.cap.step === 2;
+    if (!wiping && !choosing && !(s.procedure === "venous" && s.sim.stage === "palpate")) return;
     finger.current = true;
+    live.hover.held = choosing;
     if (controls) controls.enabled = false;
     lastPalp.current = 0;
     onSkinMove(e);
@@ -857,11 +868,8 @@ function Rig() {
   const controls = useThree((s) => s.controls) as OrbitControlsImpl | null;
   const camera = useThree((s) => s.camera);
   const size = useThree((s) => s.size);
-  // How much further back the named views are taken, so that what they show
-  // fits the part of the canvas the practice panel leaves clear.
-  const stand = useRef(1);
-  const wide = typeof window !== "undefined" && window.innerWidth >= 1024;
-  stand.current = Math.min(Math.max(1.36 / ((size.width - (wide ? 366 : 0)) / Math.max(size.height, 1)), wide ? 1 : 0.75), 2.4);
+  const frame = useRef(size);
+  frame.current = size;
   const goal = useRef<{ p: THREE.Vector3; t: THREE.Vector3 } | null>(null);
 
   useEffect(() => {
@@ -870,7 +878,21 @@ function Rig() {
     const t = new THREE.Vector3(v.target[0] - OFFSET, v.target[1], v.target[2]);
     const p = new THREE.Vector3(v.position[0] - OFFSET, v.position[1], v.position[2]);
     // A pose worked out for this window is used as it is.
-    if (!posed) p.sub(t).multiplyScalar(stand.current).add(t);
+    if (!posed) {
+      const { width, height } = frame.current;
+      const reach = p.clone().sub(t);
+      if (typeof window !== "undefined" && window.innerWidth >= 1024) {
+        // The views were composed for a wide window with the practice panel over its right-hand side;
+        // in a taller, narrower one the camera stands further back.
+        reach.multiplyScalar(Math.min(Math.max(1.36 / ((width - 366) / Math.max(height, 1)), 1), 2.4));
+      } else {
+        // On a phone the camera stands where the subject of the view just fits between the tabs and the row of views.
+        const [w, h] = VIEWS[view.id].show;
+        const focal = height / (2 * Math.tan(Math.PI / 12));
+        reach.setLength(focal * Math.max(w / Math.max(width - 20, 60), h / Math.max(height - 98, 60)));
+      }
+      p.copy(t).add(reach);
+    }
     goal.current = { p, t };
   }, [view]);
 

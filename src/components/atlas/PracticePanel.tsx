@@ -41,6 +41,42 @@ const Chip = ({ on, onClick, disabled, children }: { on?: boolean; onClick: () =
   </button>
 );
 
+/** A button that acts once when pressed and keeps acting while it is held down. */
+function Hold({ onStep, disabled, children }: { onStep: () => void; disabled?: boolean; children: React.ReactNode }) {
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stop = () => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+  };
+  useEffect(() => stop, []);
+  const start = () => {
+    onStep();
+    const again = () => {
+      onStep();
+      timer.current = setTimeout(again, 90);
+    };
+    timer.current = setTimeout(again, 380);
+  };
+  return (
+    <button
+      className="btn btn-ghost flex-1 select-none px-2 text-[13px]"
+      disabled={disabled}
+      onPointerDown={(e) => {
+        if (e.button === 0) start();
+      }}
+      onPointerUp={stop}
+      onPointerLeave={stop}
+      onPointerCancel={stop}
+      onContextMenu={(e) => e.preventDefault()}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") onStep();
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
 /** Re-renders a few times a second while a clock is running. */
 function useNow(running: boolean) {
   const [now, setNow] = useState(() => Date.now());
@@ -193,7 +229,7 @@ function Venous() {
             </Chip>
           </div>
           <p className="mt-2 rounded-lg bg-white/5 px-3 py-2 text-[12px] leading-relaxed text-slate-300">
-            <b className="text-white">Hold the needle:</b> drag the holder (teal ring) to tilt and aim it about the site. Drag the end of the tube (amber ring) to push it in and draw it back — or scroll over it, or press ↑ ↓.
+            <b className="text-white">Hold the needle:</b> drag the holder (teal ring) to tilt and aim it about the site. Drag the end of the tube (amber ring) to push it in and draw it back. The sliders and buttons below do the same, as do scrolling over the needle and the ↑ ↓ keys.
           </p>
           <div className={`mt-2 space-y-2 text-xs text-slate-300 ${held ? "" : "pointer-events-none opacity-50"}`}>
             <label className="block">
@@ -208,6 +244,10 @@ function Venous() {
               <span className="flex justify-between"><span>Needle in the skin</span><b>{inSkin ? `${sim.depth.toFixed(1)} mm` : "—"}</b></span>
               <input type="range" min={HOVER_MM} max={30} step={0.5} value={sim.depth} onChange={(e) => setDepth(+e.target.value)} />
             </label>
+            <div className="flex gap-2">
+              <Hold onStep={() => setDepth(useAtlas.getState().sim.depth - 0.5)}>◀ Draw back</Hold>
+              <Hold onStep={() => setDepth(useAtlas.getState().sim.depth + 0.5)}>Advance ▶</Hold>
+            </div>
           </div>
           {level.hints && held && <p className={`mt-2 text-xs ${live === "success" ? "text-emerald-300" : "text-slate-400"}`}>{status}</p>}
           <Cite ids={["clsi-venous", "who"]} className="mt-2" />
@@ -286,6 +326,7 @@ function Capillary() {
 
       <Step n={2} title="Choose the site" state={state(2)} summary={cap.site ? "Site marked" : "—"} onOpen={before ? () => capStep(2) : undefined}>
         <p className="text-sm text-slate-200">Click the spot on a fingertip where the lancet should go. The finger under your pointer is named as you move.</p>
+        <p className="mt-1 text-[11px] text-slate-500 lg:hidden">On a touch screen, slide a finger over the fingertips to name them, then tap the spot.</p>
         {hints && <p className="mt-2 rounded-lg bg-accent/10 px-3 py-2 text-[12px] leading-relaxed text-emerald-100">The green patches show the recommended places: the pad of the middle or ring finger, a little to one side of the midline.</p>}
         <button className="btn btn-ghost mt-3 w-full" onClick={() => goto("fingers")}>
           View the fingertips
