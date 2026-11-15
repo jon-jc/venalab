@@ -35,7 +35,7 @@ export const TONES = [
 ];
 
 export const VIEWS: Record<string, { label: string; target: Vec3; position: Vec3 }> = {
-  full: { label: "Whole limb", target: [12.5, 1, 0.5], position: [13.5, 12, 132] },
+  full: { label: "Whole limb", target: [17, 1, 0.5], position: [18, 12, 146] },
   fossa: { label: "Antecubital fossa", target: [0.5, 0, 2], position: [2, -1, 40] },
   forearm: { label: "Anterior forearm", target: [13, 0, 1], position: [13, 0, 46] },
   dorsum: { label: "Dorsal hand", target: [34, 0.8, 0], position: [36, 6, -38] },
