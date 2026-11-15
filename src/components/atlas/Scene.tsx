@@ -667,7 +667,7 @@ function Arm() {
     const tone = new THREE.Color(TONES[useAtlas.getState().tone].color);
     skinUniforms.uPalm.value.copy(nir ? new THREE.Color("#2fbf86") : tone.clone().lerp(new THREE.Color("#f4c6b6"), 0.55));
     skinUniforms.uRim.value.set(nir ? "#000000" : "#34100b");
-    skinUniforms.uScatter.value.setRGB(nir ? 0 : 0.3, nir ? 0 : 0.06, nir ? 0 : 0.035);
+    skinUniforms.uScatter.value.setRGB(nir ? 0 : 0.16, nir ? 0 : 0.035, nir ? 0 : 0.02);
   }, [tone, nir]);
   useEffect(() => {
     useAtlas.getState().set({ built });

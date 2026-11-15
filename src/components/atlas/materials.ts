@@ -126,7 +126,7 @@ export const skinUniforms = {
   /** Red light scattered back out of the skin at grazing angles. */
   uRim: { value: new THREE.Color("#34100b") },
   /** Light that bleeds red through the skin around the shadow line. */
-  uScatter: { value: new THREE.Color(0.3, 0.06, 0.035) },
+  uScatter: { value: new THREE.Color(0.16, 0.035, 0.02) },
   /** Direction of the key light, in model space. */
   uKey: { value: new THREE.Vector3(20, 30, 50).normalize() },
 };
@@ -166,8 +166,8 @@ export const skinMaterial = tissue({
       float onFace = face == 0.0 ? 1.0 : smoothstep(0.0, 0.4, sn.z * face);
       float back = smoothstep(0.1, 0.55, -sn.z);
       float fold = exp(-d * d / 0.007) + 0.55 * exp(-(d - 0.16) * (d - 0.16) / 0.005);
-      float wrinkles = (0.5 + 0.5 * cos(d * 40.0)) * exp(-d * d / 0.07);
-      crease = max(crease, reach * onFace * mix(fold, 0.7 * wrinkles, face == 0.0 ? back : step(face, 0.0)));
+      float wrinkles = (0.5 + 0.5 * cos(d * 34.0 + 5.0 * vnoise(sp * 3.0))) * exp(-d * d / 0.04);
+      crease = max(crease, reach * onFace * mix(fold, 0.45 * wrinkles, face == 0.0 ? back : step(face, 0.0)));
     }
     float palmar = smoothstep(26.8, 28.5, sp.x) * smoothstep(0.2, 0.6, sn.z);
     float palmLine = 0.0;
@@ -185,14 +185,14 @@ export const skinMaterial = tissue({
     }
     blush = min(blush, 1.0);
     float freckle = smoothstep(0.8, 0.9, vnoise(sp * 8.0)) * smoothstep(0.45, 0.8, fbm(sp * 0.7 + 3.0)) * smoothstep(0.0, 0.5, -sn.z);
-    float relief = 0.006 * pores + 0.008 * lines + 0.009 * lattice - 0.035 * crease;
+    float relief = 0.003 * pores + 0.006 * lines + 0.005 * lattice - 0.03 * crease;
     float palm = smoothstep(26.0, 29.5, sp.x) * smoothstep(-0.2, 0.45, sn.z);
     diffuseColor.rgb = mix(diffuseColor.rgb, uPalm * vColor.rgb, palm * 0.7);
-    diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.13, 0.86, 0.83), blush * 0.45);
-    diffuseColor.rgb *= (0.92 + 0.15 * mottle) * (0.97 + 0.06 * pores) * (1.0 - 0.24 * crease) * (1.0 - 0.2 * freckle);
+    diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.08, 0.9, 0.88), blush * 0.22);
+    diffuseColor.rgb *= (0.92 + 0.15 * mottle) * (0.985 + 0.03 * pores) * (1.0 - 0.16 * crease) * (1.0 - 0.2 * freckle);
     // Folds and web spaces receive less light, and what reaches them has passed through skin, so it is warmer.
-    diffuseColor.rgb *= mix(vec3(0.58, 0.38, 0.34), vec3(1.0), vAO);`,
-  finish: "roughnessFactor = clamp(roughnessFactor * (0.8 + 0.38 * pores) * (1.0 - 0.18 * palmar), 0.18, 1.0);",
+    diffuseColor.rgb *= mix(vec3(0.7, 0.55, 0.5), vec3(1.0), vAO);`,
+  finish: "roughnessFactor = clamp(roughnessFactor * (0.9 + 0.18 * pores) * (1.0 - 0.18 * palmar), 0.18, 1.0);",
   glow: /* glsl */ `
     float keyLight = dot(normalize(vObjNormal), uKey);
     float shadowLine = smoothstep(-0.5, 0.0, keyLight) * (1.0 - smoothstep(0.0, 0.55, keyLight));
