@@ -131,7 +131,7 @@ function Venous() {
             </Chip>
           </div>
           <p className="mt-2 rounded-lg bg-white/5 px-3 py-2 text-[12px] leading-relaxed text-slate-300">
-            <b className="text-white">Hold the needle:</b> drag the holder to tilt and aim it about the site. Scroll over it, press ↑ ↓, or drag once it is in the skin, to advance and withdraw.
+            <b className="text-white">Hold the needle:</b> drag the holder (teal ring) to tilt and aim it about the site. Drag the end of the tube (amber ring) to push it in and draw it back — or scroll over it, or press ↑ ↓.
           </p>
           <div className={`mt-2 space-y-2 text-xs text-slate-300 ${held && sim.entry ? "" : "pointer-events-none opacity-50"}`}>
             <label className="block">
