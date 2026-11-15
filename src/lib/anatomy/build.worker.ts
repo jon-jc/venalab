@@ -36,7 +36,11 @@ export interface ShellsReply {
   fat: Packed;
   fascia: Packed;
 }
-export type Reply = AnatomyReply | ShellsReply;
+export interface FailedReply {
+  kind: "failed";
+  message: string;
+}
+export type Reply = AnatomyReply | ShellsReply | FailedReply;
 
 let skin: BufferGeometry | null = null;
 let skinGirth = NaN;
@@ -48,7 +52,12 @@ let queue: Promise<void> = loadLimb();
 
 self.addEventListener("message", (e: MessageEvent<Request>) => {
   // One failed build must not hold up the requests behind it.
-  queue = queue.then(() => build(e.data)).catch((err) => console.error(err));
+  queue = queue
+    .then(() => build(e.data))
+    .catch((err) => {
+      console.error(err);
+      post({ kind: "failed", message: err instanceof Error ? err.message : String(err) });
+    });
 });
 
 function build({ id, pattern, body }: Request) {

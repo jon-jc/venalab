@@ -207,6 +207,8 @@ interface AtlasState {
   palp: Palpation | null;
   /** Caption of the guided demonstration while it is playing. */
   demo: { step: number; total: number; caption: string } | null;
+  /** Why the model could not be built on this device, if it could not. */
+  failed: string | null;
   sim: SimState;
   cap: CapState;
   set: (p: Partial<AtlasState>) => void;
@@ -307,6 +309,7 @@ export const useAtlas = create<AtlasState>((set, get) => {
     built: [],
     palp: null,
     demo: null,
+    failed: null,
     sim: { ...freshSim, gauge: 21, gauze: null, attempts: 0, hits: 0, total: 0 },
     cap: freshCap,
     set: (p) => set(p),

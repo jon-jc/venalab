@@ -50,7 +50,15 @@ export function loadLimb(): Promise<void> {
     let buf = await (await fetch(SOURCE)).arrayBuffer();
     // Some hosts unpack the file on the way; others hand over the gzip stream as it is.
     const magic = new Uint8Array(buf, 0, 2);
-    if (magic[0] === 0x1f && magic[1] === 0x8b) buf = await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer();
+    if (magic[0] === 0x1f && magic[1] === 0x8b) {
+      if (typeof DecompressionStream === "function") buf = await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer();
+      else {
+        // Older phone browsers cannot unpack a stream themselves.
+        const { gunzipSync } = await import("fflate");
+        const raw = gunzipSync(new Uint8Array(buf));
+        buf = raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength) as ArrayBuffer;
+      }
+    }
     const v = new DataView(buf);
     if (v.getUint32(0, true) !== 0x424d4c56) throw new Error("Unrecognised limb file");
     const [nx, ny, nz] = [v.getUint32(4, true), v.getUint32(8, true), v.getUint32(12, true)];

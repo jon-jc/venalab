@@ -21,7 +21,7 @@ The site opens here. Two procedures can be practised on the same living arm.
 
 A **30-second demonstration** plays a textbook venipuncture, narrated step by step. It is the first button on the page, and `/atlas?demo` starts it as soon as the arm is built — the quickest way to show VenaLab to someone.
 
-**On a phone** the model has the top of the screen and the practice panel scrolls beneath it. A finger on the arm palpates (then *Mark this site*), scrubs with the wipe and drags the needle; the camera views are under *Views*.
+**On a phone** every feature works by touch. Held upright, the model has the top of the screen and the panel scrolls beneath it; on its side, they sit next to each other. The camera views are a row of chips along the foot of the model. A finger on the arm palpates (then *Mark this site*), scrubs with the wipe, names and marks a fingertip, and drags the needle, which also has sliders and hold-to-advance buttons. In Explore the panel has a second tab for layers and display. The vein finder takes a photo straight from the camera, and the order of draw is laid out as cards. It needs a browser with WebGL 2; if the model cannot be built the page says so instead of waiting.
 
 **Fingerstick (capillary puncture)** follows the same pattern: warm the hand, choose the site, cleanse it with the wipe, set and fire the lancet, collect.
 - The finger under the pointer is named as you move, and at the easier levels the recommended places on the pads of the middle and ring fingers are marked
