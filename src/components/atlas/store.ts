@@ -93,9 +93,12 @@ export function siteView(p: Vec3, n: Vec3, instrument: { angle: number; yaw: num
   // the site with a margin of skin around it, and the far end of the instrument.
   const margin = instrument ? 2.4 : around;
   const points: Vec3[] = [[-margin, -margin, 0], [margin, -margin, 0], [-margin, margin, 0], [margin, margin, 0]];
-  if (instrument) {
-    const d = needleDir(n, instrument.angle, instrument.yaw);
-    const reach = instrument.length ?? INSTRUMENT_CM;
+  // The needle is framed for the range of headings it is likely to be swung through, not only the one it starts at,
+  // so that aiming it does not carry the tube out of view.
+  const poses = !instrument ? [] : instrument.length ? [instrument] : [instrument, ...[-30, 30].map((dy) => ({ ...instrument, yaw: instrument.yaw + dy })), { ...instrument, angle: Math.max(instrument.angle, 35) }];
+  for (const pose of poses) {
+    const d = needleDir(n, pose.angle, pose.yaw);
+    const reach = pose.length ?? INSTRUMENT_CM;
     const end: Vec3 = [-d[0] * reach, -d[1] * reach, -d[2] * reach];
     const [u, v, w] = [dot(end, right), dot(end, up), dot(end, toward)];
     points.push([u - 1.4, v - 1.4, w], [u + 1.4, v - 1.4, w], [u - 1.4, v + 1.8, w], [u + 1.4, v + 1.8, w]);
