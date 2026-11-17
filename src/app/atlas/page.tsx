@@ -53,7 +53,7 @@ export default function AtlasPage() {
   }, [ready]);
 
   return (
-    <div className="relative flex h-[calc(100dvh-80px)] flex-col overflow-hidden max-lg:landscape:flex-row lg:block" style={{ background: nir ? "#020806" : undefined }}>
+    <div className="relative flex h-[calc(100dvh-81px)] flex-col overflow-hidden max-lg:landscape:flex-row lg:block" style={{ background: nir ? "#020806" : undefined }}>
       <div className={`relative shrink-0 lg:absolute lg:inset-0 lg:h-auto lg:w-auto max-lg:landscape:h-full ${demo ? "h-[68%] max-lg:landscape:w-full" : "h-[46%] max-lg:landscape:w-[56%]"}`}>
         <div className="absolute inset-0">
           <Scene />
